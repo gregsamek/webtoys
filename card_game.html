@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Card Game Prototyper</title>
+    <style>
+        /* --- Basic Setup & Table --- */
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* Prevents scrollbars from appearing */
+            font-family: Arial, sans-serif;
+        }
+
+        #table {
+            width: 100vw;
+            height: 100vh;
+            background-color: #35654d; /* A nice soft green for the table */
+            position: relative;
+            user-select: none; /* Prevents text selection while dragging */
+        }
+
+        /* --- Deck Area --- */
+        #deck-area {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            gap: 20px;
+        }
+
+        #deck {
+            width: 120px;
+            height: 120px;
+            background-color: #b22222; /* A classic red card back color */
+            background-image: repeating-linear-gradient(
+                45deg,
+                rgba(0, 0, 0, 0.1),
+                rgba(0, 0, 0, 0.1) 10px,
+                rgba(255, 255, 255, 0.1) 10px,
+                rgba(255, 255, 255, 0.1) 20px
+            );
+            border: 2px solid white;
+            border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 3px 3px 5px rgba(0,0,0,0.3);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+        
+        #deck.empty {
+            background-color: #555;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        /* --- Card Styling --- */
+        .card {
+            position: absolute;
+            width: 120px;
+            height: 120px;
+            background-color: white;
+            border: 1px solid #ccc;
+            border-radius: 12px;
+            box-shadow: 3px 3px 5px rgba(0,0,0,0.3);
+            cursor: grab;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+            padding: 0;
+        }
+
+        .card.gray {
+            background-color: #e0e0e0 !important;
+        }
+
+        /* --- Diagonal Line for Marked Cards --- */
+        /* --- Circle for Marked Cards --- */
+        .card.diagonal-line::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 120px;
+            height: 120px;
+            border: 3px solid black;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 2;
+            box-sizing: border-box;
+        }
+
+        .card.dragging {
+            cursor: grabbing;
+            box-shadow: 6px 6px 15px rgba(0,0,0,0.4);
+        }
+        
+        .card .rank {
+            font-size: 50px;
+            font-weight: bold;
+            line-height: 1;
+        }
+
+        .card .suit {
+            font-size: 28px;
+        }
+
+        .card.red { color: #d90429; }
+        .card.black { color: #000000; }
+        .card.blue { color: #0074D9; }
+        .card.green { color: #2ECC40; }
+
+        .card .top-left {
+            display: none;
+        }
+        
+        .card .bottom-right {
+            display: none;
+        }
+
+    </style>
+</head>
+<body>
+
+    <div id="table">
+        <div id="deck-area">
+            <div id="deck">DECK</div>
+        </div>
+        <!-- Dealt cards will be appended here -->
+    </div>
+
+    <script>
+        // --- DOM Elements ---
+        const table = document.getElementById('table');
+        const deckElement = document.getElementById('deck');
+
+        // --- Card Data ---
+        const suits = ['♥', '♦', '♣', '♠'];
+        const ranks = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
+        let deck = [];
+
+        // --- Dragging State ---
+        let activeCard = null;
+        let offsetX = 0;
+        let offsetY = 0;
+        let highestZIndex = 1;
+
+        // --- Game Logic Functions ---
+        function createDeck() {
+            deck = [];
+            for (const suit of suits) {
+                for (const rank of ranks) {
+                    deck.push({ suit, rank });
+                }
+            }
+        }
+
+        function shuffleDeck() {
+            // Fisher-Yates shuffle algorithm for a thorough shuffle
+            for (let i = deck.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [deck[i], deck[j]] = [deck[j], deck[i]];
+            }
+        }
+
+        function dealCard() {
+            if (deck.length === 0) {
+                deckElement.classList.add('empty');
+                deckElement.textContent = 'EMPTY';
+                return;
+            }
+
+            const cardData = deck.pop();
+            const cardElement = document.createElement('div');
+            
+            // --- Create the card's visual elements ---
+            cardElement.classList.add('card');
+            let colorClass = '';
+            if (cardData.suit === '♥') {
+                colorClass = 'red';
+            } else if (cardData.suit === '♦') {
+                colorClass = 'blue';
+            } else if (cardData.suit === '♣') {
+                colorClass = 'green';
+            } else {
+                colorClass = 'black';
+            }
+            cardElement.classList.add(colorClass);
+
+            cardElement.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%;">
+                    <div class="rank">${cardData.rank}</div>
+                    <div class="suit">${cardData.suit}</div>
+                </div>
+            `;
+            
+            // --- Position the new card next to the deck ---
+            cardElement.style.left = '140px';
+            cardElement.style.top = '20px';
+            cardElement.style.zIndex = highestZIndex++;
+
+            table.appendChild(cardElement);
+
+            // --- Add event listeners for dragging this specific card ---
+            cardElement.addEventListener('mousedown', onMouseDown);
+            // Add right-click event to toggle diagonal line
+            cardElement.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+                cardElement.classList.toggle('diagonal-line');
+            });
+            
+            // Update deck count display
+            if (deck.length > 0) {
+                deckElement.textContent = `DECK (${deck.length})`;
+            } else {
+                deckElement.classList.add('empty');
+                deckElement.textContent = 'EMPTY';
+            }
+        }
+
+        function resetGame() {
+            // Clear all dealt cards from the table
+            const dealtCards = document.querySelectorAll('.card');
+            dealtCards.forEach(card => card.remove());
+            
+            // Reset game state
+            createDeck();
+            shuffleDeck();
+            highestZIndex = 1;
+            
+            // Reset deck element visuals
+            deckElement.classList.remove('empty');
+            deckElement.textContent = `DECK (${deck.length})`;
+            console.log("Game reset. Deck shuffled.");
+        }
+
+        // --- Drag and Drop Event Handlers ---
+        function onMouseDown(e) {
+            // We only want to drag with the left mouse button
+            if (e.button !== 0) return;
+
+            activeCard = e.currentTarget;
+            activeCard.classList.add('dragging');
+            
+            // Bring card to the front
+            activeCard.style.zIndex = highestZIndex++;
+
+            // Calculate the offset from the mouse pointer to the card's top-left corner
+            offsetX = e.clientX - activeCard.offsetLeft;
+            offsetY = e.clientY - activeCard.offsetTop;
+            
+            // Attach move and up listeners to the whole document
+            // This ensures dragging continues even if the mouse leaves the card
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        }
+
+        function onMouseMove(e) {
+            if (!activeCard) return;
+
+            // Prevent default browser actions
+            e.preventDefault();
+
+            // Calculate new position
+            let newX = e.clientX - offsetX;
+            let newY = e.clientY - offsetY;
+
+            // Set the new position
+            activeCard.style.left = `${newX}px`;
+            activeCard.style.top = `${newY}px`;
+        }
+
+        function onMouseUp() {
+            if (!activeCard) return;
+            
+            activeCard.classList.remove('dragging');
+            activeCard = null;
+
+            // Clean up global event listeners
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+        }
+
+        // --- Initial Setup ---
+        deckElement.addEventListener('click', dealCard);
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.key.toLowerCase() === 'r') {
+                resetGame();
+            }
+        });
+
+        // Start the game for the first time
+        resetGame();
+
+    </script>
+</body>
+</html>
