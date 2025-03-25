@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Previewer</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Marked.js for Markdown to HTML conversion -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        /* Custom styles for a better writing and preview experience */
+        body {
+            font-family: 'Inter', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+        
+        #markdown-input {
+            resize: none;
+            border: none;
+            outline: none;
+            font-family: 'Fira Code', 'Courier New', Courier, monospace;
+            background-color: #282c34;
+            color: #abb2bf;
+        }
+
+        #html-output {
+            background-color: #ffffff;
+            color: #333;
+        }
+
+        /* Styling for rendered HTML elements in the preview pane */
+        #html-output h1, #html-output h2, #html-output h3, #html-output h4, #html-output h5, #html-output h6 {
+            font-weight: 700;
+            border-bottom: 1px solid #eaecef;
+            padding-bottom: 0.3em;
+            margin-top: 24px;
+            margin-bottom: 16px;
+        }
+        #html-output h1 { font-size: 2em; }
+        #html-output h2 { font-size: 1.5em; }
+        #html-output h3 { font-size: 1.25em; }
+        #html-output p { margin-bottom: 1em; line-height: 1.6; }
+        #html-output a { color: #0366d6; text-decoration: none; }
+        #html-output a:hover { text-decoration: underline; }
+        #html-output ul, #html-output ol { padding-left: 2em; margin-bottom: 1em; }
+        #html-output li { margin-bottom: 0.5em; }
+        #html-output blockquote {
+            padding: 0 1em;
+            color: #6a737d;
+            border-left: 0.25em solid #dfe2e5;
+            margin-left: 0;
+            margin-right: 0;
+            margin-bottom: 1em;
+        }
+        #html-output code {
+            font-family: 'Fira Code', 'Courier New', Courier, monospace;
+            background-color: #f6f8fa;
+            padding: 0.2em 0.4em;
+            margin: 0;
+            font-size: 85%;
+            border-radius: 6px;
+        }
+        #html-output pre {
+            background-color: #f6f8fa;
+            padding: 16px;
+            overflow: auto;
+            line-height: 1.45;
+            border-radius: 6px;
+            margin-bottom: 1em;
+        }
+        #html-output pre code {
+            padding: 0;
+            margin: 0;
+            background-color: transparent;
+        }
+        #html-output table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-bottom: 1em;
+        }
+        #html-output th, #html-output td {
+            border: 1px solid #dfe2e5;
+            padding: 8px 12px;
+        }
+        #html-output th {
+            font-weight: 600;
+            background-color: #f6f8fa;
+        }
+        #html-output img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code&family=Inter:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-gray-800 h-full overflow-hidden">
+
+    <div id="app" class="h-full flex flex-col">
+        <!-- Header -->
+        <header class="bg-gray-900 text-white p-3 shadow-md z-10 flex items-center justify-between flex-shrink-0">
+            <h1 class="text-xl font-bold">Markdown Previewer</h1>
+            <span class="text-sm text-gray-400">Live Rendering</span>
+        </header>
+
+        <!-- Main Content: Editor and Preview Panes -->
+        <main class="flex-grow flex flex-col md:flex-row h-full overflow-auto">
+            <!-- Left Pane: Markdown Input -->
+            <div class="w-full md:w-1/2 h-1/2 md:h-full flex flex-col">
+                <div class="bg-gray-700 text-white p-2 text-sm font-semibold uppercase tracking-wider">
+                    Editor
+                </div>
+                <textarea id="markdown-input" class="w-full h-full p-6 text-base leading-relaxed focus:outline-none" spellcheck="false"></textarea>
+            </div>
+            
+            <!-- Right Pane: HTML Output -->
+            <div class="w-full md:w-1/2 h-1/2 md:h-full border-l border-gray-600 flex flex-col">
+                <div class="bg-gray-200 text-gray-800 p-2 text-sm font-semibold uppercase tracking-wider">
+                    Preview
+                </div>
+                <div id="html-output" class="w-full h-full p-6 overflow-y-auto"></div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const markdownInput = document.getElementById('markdown-input');
+        const htmlOutput = document.getElementById('html-output');
+
+        // Initial default content for the editor
+        const defaultContent = `# Welcome to the Markdown Previewer!
+
+## Type your Markdown on the left...
+...and see the rendered HTML on the right.
+
+### Key Features
+- **Live Preview:** Updates as you type.
+- **No Dependencies:** Just a single HTML file.
+- **Responsive:** Works on mobile (panes stack vertically).
+
+### Example Code Block
+\`\`\`javascript
+function greet() {
+  console.log("Hello, world!");
+}
+greet();
+\`\`\`
+
+### Example List
+* Item 1
+* Item 2
+    * Nested Item 2.1
+    * Nested Item 2.2
+
+### Example Blockquote
+> "The greatest glory in living lies not in never falling, but in rising every time we fall." - Nelson Mandela
+
+### Example Table
+| Feature    | Status      |
+|------------|-------------|
+| Live Preview | ✅ Complete |
+| Styling    | ✅ Complete |
+| Fun to Use | ✨ Yes!    |
+
+### Example Image
+![A placeholder image](https://placehold.co/600x400/282c34/ffffff?text=Markdown!)
+`;
+
+        // Function to update the preview pane
+        const updatePreview = () => {
+            const markdownText = markdownInput.value;
+            // Using marked.parse() to convert markdown to HTML
+            htmlOutput.innerHTML = marked.parse(markdownText);
+        };
+
+        // Set initial content and render preview on page load
+        markdownInput.value = defaultContent;
+        updatePreview();
+
+        // Add event listener to update preview on input
+        markdownInput.addEventListener('input', updatePreview);
+
+    </script>
+
+</body>
+</html>
