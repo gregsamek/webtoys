@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Base64 Encoder / Decoder</title>
+  <style>
+    :root {
+      --bg: #0f1320;
+      --panel: #151a2b;
+      --panel-2: #0f1629;
+      --text: #e6eaf2;
+      --muted: #a8b2c7;
+      --accent: #4aa3ff;
+      --accent-2: #7cd2ff;
+      --ok: #3ecf8e;
+      --warn: #ffc857;
+      --err: #ff6b6b;
+      --border: #242b42;
+      --btn: #1a2240;
+      --btn-hover: #223066;
+      --shadow: 0 10px 30px rgba(0,0,0,0.35);
+      --radius: 12px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: radial-gradient(1200px 800px at 20% -10%, #1b2550 0%, rgba(27,37,80,0) 70%) no-repeat,
+                  radial-gradient(1200px 800px at 120% 110%, #142040 0%, rgba(20,32,64,0) 60%) no-repeat,
+                  var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      line-height: 1.4;
+    }
+
+    .app {
+      max-width: 1100px;
+      margin: 34px auto;
+      padding: 0 16px;
+    }
+
+    header {
+      margin-bottom: 16px;
+      text-align: center;
+    }
+    header h1 {
+      margin: 0 0 6px 0;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+    }
+    header p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr minmax(120px, 160px) 1fr;
+      gap: 14px;
+      align-items: stretch;
+    }
+
+    .card {
+      background: linear-gradient(180deg, var(--panel), var(--panel-2));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      min-height: 360px;
+    }
+
+    .card header {
+      text-align: left;
+      padding: 12px 14px 10px 14px;
+      border-bottom: 1px solid var(--border);
+      margin: 0;
+    }
+    .card header h2 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--accent-2);
+      letter-spacing: 0.3px;
+    }
+
+    .area-wrap {
+      position: relative;
+      flex: 1;
+    }
+
+    textarea {
+      width: 100%;
+      height: 100%;
+      resize: none;
+      border: 0;
+      outline: none;
+      padding: 14px;
+      background: transparent;
+      color: var(--text);
+      font: 13px/1.45 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      white-space: pre-wrap;
+      word-break: break-word;
+      caret-color: var(--accent);
+    }
+    textarea::placeholder { color: #6f7ca1; }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      padding: 10px;
+      border-top: 1px solid var(--border);
+      background: rgba(0,0,0,0.08);
+      border-bottom-left-radius: var(--radius);
+      border-bottom-right-radius: var(--radius);
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid var(--border);
+      background: linear-gradient(180deg, var(--btn), #131b36);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: transform 0.02s ease-in-out, background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+    button:hover {
+      background: var(--btn-hover);
+      border-color: #2b3a70;
+    }
+    button:active {
+      transform: translateY(1px);
+    }
+    .btn-primary {
+      background: linear-gradient(180deg, #1d3a7a, #162a59);
+      border-color: #2b4aa0;
+    }
+    .btn-primary:hover {
+      background: linear-gradient(180deg, #224592, #1a316a);
+      border-color: #3458bf;
+    }
+    .btn-ghost {
+      background: transparent;
+      border-color: #2a3455;
+    }
+    .muted {
+      color: var(--muted);
+    }
+
+    .center-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      align-items: stretch;
+      justify-content: center;
+    }
+
+    .center-controls .group {
+      background: linear-gradient(180deg, var(--panel), var(--panel-2));
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 10px;
+      display: grid;
+      gap: 8px;
+    }
+    .center-controls .group h3 {
+      margin: 0 0 4px;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      letter-spacing: 0.3px;
+      text-align: center;
+    }
+
+    .status {
+      margin-top: 14px;
+      padding: 10px 12px;
+      border: 1px dashed #2a355f;
+      color: var(--muted);
+      background: rgba(20, 30, 60, 0.4);
+      border-radius: 10px;
+      font-size: 12px;
+    }
+    .status.ok { color: var(--ok); border-color: rgba(62, 207, 142, 0.5); }
+    .status.warn { color: var(--warn); border-color: rgba(255, 200, 87, 0.55); }
+    .status.err { color: var(--err); border-color: rgba(255, 107, 107, 0.55); }
+
+    .tiny {
+      font-size: 11px;
+      color: var(--muted);
+      margin-left: 6px;
+    }
+
+    @media (max-width: 900px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+      .center-controls {
+        order: -1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <h1>Base64 Encoder / Decoder</h1>
+      <p>Encode plain text to Base64 and decode Base64 back to text. Unicode-safe, client-side, no dependencies.</p>
+    </header>
+
+    <div class="grid">
+      <!-- Plain Text Panel -->
+      <section class="card" aria-labelledby="label-plain">
+        <header>
+          <h2 id="label-plain">Plain Text</h2>
+        </header>
+        <div class="area-wrap">
+          <textarea id="plain" placeholder="Type or paste text here..."></textarea>
+        </div>
+        <div class="toolbar">
+          <button id="encodeBtn" class="btn-primary" title="Encode left → right (Ctrl/⌘ + Enter)">Encode →</button>
+          <button id="copyPlain" class="btn-ghost" title="Copy plain text">Copy</button>
+          <button id="clearPlain" class="btn-ghost" title="Clear plain text">Clear</button>
+          <span class="tiny" id="plainCount" aria-hidden="true"></span>
+        </div>
+      </section>
+
+      <!-- Center Controls -->
+      <div class="center-controls">
+        <div class="group">
+          <h3>Quick Actions</h3>
+          <button id="swapBtn" title="Swap panes (Base64 ⇄ Text)">Swap Sides</button>
+          <button id="flipBtn" title="Move decoded/encoded result back to source field">Send Result Back</button>
+        </div>
+        <div class="group">
+          <h3>Tips</h3>
+          <div class="tiny">
+            • Encode: Ctrl/⌘ + Enter while in Text<br/>
+            • Decode: Ctrl/⌘ + Enter while in Base64<br/>
+            • Decoder accepts URL-safe Base64 (- and _), ignores whitespace
+          </div>
+        </div>
+      </div>
+
+      <!-- Base64 Panel -->
+      <section class="card" aria-labelledby="label-b64">
+        <header>
+          <h2 id="label-b64">Base64</h2>
+        </header>
+        <div class="area-wrap">
+          <textarea id="b64" placeholder="Type or paste Base64 here..."></textarea>
+        </div>
+        <div class="toolbar">
+          <button id="decodeBtn" class="btn-primary" title="Decode right → left (Ctrl/⌘ + Enter)">← Decode</button>
+          <button id="copyB64" class="btn-ghost" title="Copy Base64">Copy</button>
+          <button id="clearB64" class="btn-ghost" title="Clear Base64">Clear</button>
+          <span class="tiny" id="b64Count" aria-hidden="true"></span>
+        </div>
+      </section>
+    </div>
+
+    <div id="status" class="status" role="status" aria-live="polite">
+      Ready.
+    </div>
+  </div>
+
+  <script>
+    // --- Utilities: Unicode-safe Base64 ---
+    function encodeBase64(text) {
+      try {
+        if (window.TextEncoder) {
+          const bytes = new TextEncoder().encode(text);
+          let binary = '';
+          const chunk = 0x8000;
+          for (let i = 0; i < bytes.length; i += chunk) {
+            binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+          }
+          return btoa(binary);
+        } else {
+          // Fallback path (older browsers)
+          // eslint-disable-next-line deprecated-declarations
+          return btoa(unescape(encodeURIComponent(text)));
+        }
+      } catch (err) {
+        throw new Error('Failed to encode to Base64: ' + (err && err.message ? err.message : String(err)));
+      }
+    }
+
+    function normalizeBase64(input) {
+      // Accept URL-safe base64 and ignore whitespace
+      const cleaned = input.replace(/\s+/g, '').replace(/-/g, '+').replace(/_/g, '/');
+      // Pad to multiple of 4
+      const padLen = (4 - (cleaned.length % 4)) % 4;
+      return cleaned + '='.repeat(padLen);
+    }
+
+    function decodeBase64(b64) {
+      try {
+        const normalized = normalizeBase64(b64);
+        const binary = atob(normalized);
+        const len = binary.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+
+        if (window.TextDecoder) {
+          return new TextDecoder().decode(bytes);
+        } else {
+          // Fallback via percent-decoding
+          let esc = '';
+          for (let i = 0; i < bytes.length; i++) esc += '%' + ('00' + bytes[i].toString(16)).slice(-2);
+          return decodeURIComponent(esc);
+        }
+      } catch (err) {
+        throw new Error('Invalid Base64 or decoding failed.');
+      }
+    }
+
+    // --- DOM elements ---
+    const $plain = document.getElementById('plain');
+    const $b64 = document.getElementById('b64');
+    const $encode = document.getElementById('encodeBtn');
+    const $decode = document.getElementById('decodeBtn');
+    const $copyPlain = document.getElementById('copyPlain');
+    const $copyB64 = document.getElementById('copyB64');
+    const $clearPlain = document.getElementById('clearPlain');
+    const $clearB64 = document.getElementById('clearB64');
+    const $status = document.getElementById('status');
+    const $plainCount = document.getElementById('plainCount');
+    const $b64Count = document.getElementById('b64Count');
+    const $swapBtn = document.getElementById('swapBtn');
+    const $flipBtn = document.getElementById('flipBtn');
+
+    // --- Status helper ---
+    function setStatus(msg, cls = '') {
+      $status.className = 'status' + (cls ? ' ' + cls : '');
+      $status.textContent = msg;
+    }
+
+    function updateCounts() {
+      $plainCount.textContent = $plain.value.length ? `${$plain.value.length} chars` : '';
+      $b64Count.textContent = $b64.value.length ? `${$b64.value.length} chars` : '';
+    }
+
+    // --- Actions ---
+    function doEncode() {
+      try {
+        const input = $plain.value;
+        const out = encodeBase64(input);
+        $b64.value = out;
+        updateCounts();
+        setStatus(`Encoded ${input.length} chars to ${out.length} Base64 chars.`, 'ok');
+      } catch (e) {
+        setStatus(e.message || 'Encoding error.', 'err');
+      }
+    }
+
+    function doDecode() {
+      try {
+        const input = $b64.value.trim();
+        const out = decodeBase64(input);
+        $plain.value = out;
+        updateCounts();
+        setStatus(`Decoded Base64 (${input.length} chars) to ${out.length} text chars.`, 'ok');
+      } catch (e) {
+        setStatus(e.message || 'Decoding error.', 'err');
+      }
+    }
+
+    async function copyToClipboard(text) {
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        } else {
+          const ta = document.createElement('textarea');
+          ta.style.position = 'fixed';
+          ta.style.opacity = '0';
+          ta.value = text;
+          document.body.appendChild(ta);
+          ta.select();
+          document.execCommand('copy');
+          document.body.removeChild(ta);
+          return true;
+        }
+      } catch {
+        return false;
+      }
+    }
+
+    function swapPanes() {
+      // Swap labels and contents visually by swapping values
+      const tmp = $plain.value;
+      $plain.value = $b64.value;
+      $b64.value = tmp;
+      updateCounts();
+      setStatus('Swapped contents between panes.', 'warn');
+    }
+
+    function sendResultBack() {
+      // If plain was source and base64 has new content, replace plain with decoded base64, and vice versa.
+      // We'll decide based on which side is non-empty and different after last operation.
+      if ($b64.value && !$plain.value) {
+        try {
+          $plain.value = decodeBase64($b64.value);
+          setStatus('Moved decoded text back to the Text pane.', 'ok');
+        } catch {
+          setStatus('Could not decode Base64 on the right pane.', 'err');
+        }
+      } else if ($plain.value && !$b64.value) {
+        $b64.value = encodeBase64($plain.value);
+        setStatus('Moved encoded Base64 back to the Base64 pane.', 'ok');
+      } else {
+        setStatus('Nothing to move. Clear one side first, or use Encode/Decode.', 'warn');
+      }
+      updateCounts();
+    }
+
+    // --- Wire up events ---
+    $encode.addEventListener('click', doEncode);
+    $decode.addEventListener('click', doDecode);
+
+    $copyPlain.addEventListener('click', async () => {
+      const ok = await copyToClipboard($plain.value);
+      setStatus(ok ? 'Copied text to clipboard.' : 'Clipboard copy failed.', ok ? 'ok' : 'err');
+    });
+    $copyB64.addEventListener('click', async () => {
+      const ok = await copyToClipboard($b64.value);
+      setStatus(ok ? 'Copied Base64 to clipboard.' : 'Clipboard copy failed.', ok ? 'ok' : 'err');
+    });
+
+    $clearPlain.addEventListener('click', () => {
+      $plain.value = '';
+      updateCounts();
+      setStatus('Cleared text.', 'warn');
+      $plain.focus();
+    });
+    $clearB64.addEventListener('click', () => {
+      $b64.value = '';
+      updateCounts();
+      setStatus('Cleared Base64.', 'warn');
+      $b64.focus();
+    });
+
+    $swapBtn.addEventListener('click', swapPanes);
+    $flipBtn.addEventListener('click', sendResultBack);
+
+    $plain.addEventListener('input', updateCounts);
+    $b64.addEventListener('input', updateCounts);
+
+    // Keyboard shortcuts: Ctrl/Cmd + Enter encodes/decodes based on focus
+    function handleKey(e) {
+      const isMetaEnter = (e.key === 'Enter' && (e.ctrlKey || e.metaKey));
+      if (!isMetaEnter) return;
+      if (document.activeElement === $plain) {
+        e.preventDefault(); doEncode();
+      } else if (document.activeElement === $b64) {
+        e.preventDefault(); doDecode();
+      }
+    }
+    document.addEventListener('keydown', handleKey);
+
+    // Init
+    updateCounts();
+  </script>
+</body>
+</html>
