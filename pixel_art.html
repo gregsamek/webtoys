@@ -1,0 +1,452 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Pixel Art Editor (Single‑File)</title>
+<style>
+  :root{
+    --pixel-size: 18px;         /* visual size of a single pixel */
+    --grid-w: 32;               /* logical grid width  (in pixels) */
+    --grid-h: 32;               /* logical grid height (in pixels) */
+  }
+
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: #1a1a1a;
+    color: #eaeaea;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+  }
+
+  .app {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: 10px;
+    padding: 16px;
+    max-width: 980px;
+    margin: 0 auto;
+  }
+
+  h1 {
+    font-size: 18px;
+    margin: 0 0 4px 0;
+    font-weight: 600;
+    letter-spacing: .2px;
+  }
+
+  .toolbar, .footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    background: #262626;
+    padding: 10px;
+    border-radius: 10px;
+    box-shadow: 0 0 0 1px #333 inset;
+  }
+
+  .toolbar .group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .label {
+    opacity: .8;
+    font-size: 12px;
+  }
+
+  button, select, input[type="color"] {
+    background: #333;
+    color: #eee;
+    border: 1px solid #444;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 14px;
+    cursor: pointer;
+    outline: none;
+  }
+
+  button:hover, select:hover {
+    background: #383838;
+  }
+
+  button.active {
+    background: #4a8cff;
+    border-color: #2c6de7;
+    color: #fff;
+  }
+
+  button.small {
+    padding: 5px 8px;
+    font-size: 12px;
+  }
+
+  .swatches {
+    display: grid;
+    grid-template-columns: repeat(12, 22px);
+    gap: 6px;
+    align-items: center;
+  }
+
+  .swatch {
+    width: 22px; height: 22px; border-radius: 6px;
+    border: 1px solid #0008;
+    box-shadow: 0 0 0 1px #fff2 inset;
+    cursor: pointer;
+  }
+  .swatch.selected {
+    outline: 2px solid #fff;
+    outline-offset: 2px;
+  }
+
+  .canvas-wrap {
+    position: relative;
+    margin: 0 auto;
+    width: calc(var(--grid-w) * var(--pixel-size));
+    height: calc(var(--grid-h) * var(--pixel-size));
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    /* checkerboard for transparency */
+    background:
+      conic-gradient(#bbb 25%, #fff 0 50%, #bbb 0 75%, #fff 0) 0 0 / calc(var(--pixel-size)) calc(var(--pixel-size));
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px #333 inset, 0 10px 30px #0006;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+  }
+
+  /* grid overlay */
+  .grid-overlay {
+    position: absolute; inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(to right, rgba(0,0,0,.18) 0 1px, transparent 1px),
+      linear-gradient(to bottom, rgba(0,0,0,.18) 0 1px, transparent 1px);
+    background-size: var(--pixel-size) var(--pixel-size);
+    mix-blend-mode: multiply;
+  }
+
+  .spacer { flex: 1 }
+
+  .footer {
+    justify-content: space-between;
+  }
+
+  .hint {
+    font-size: 12px;
+    opacity: .75;
+  }
+
+  .icon {
+    display:inline-block; width:16px; height:16px; vertical-align: -3px;
+    margin-right: 6px;
+  }
+  .icon.eraser {
+    background: linear-gradient(135deg, #ddd 0 70%, #999 71% 100%);
+    border: 1px solid #666;
+    border-radius: 3px;
+  }
+  .icon.brush {
+    background: linear-gradient(135deg, #4a8cff, #2c6de7);
+    border-radius: 50%;
+  }
+
+  .divider {
+    width: 1px; height: 26px; background: #3a3a3a; margin: 0 4px; border-radius: 1px;
+  }
+
+  @media (max-width: 560px) {
+    .swatches { grid-template-columns: repeat(8, 22px); }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div>
+      <h1>Pixel Art Editor</h1>
+      <div class="hint">Click or drag to paint. Use Eraser to clear pixels. Export your art as PNG.</div>
+    </div>
+
+    <div class="toolbar" id="toolbar">
+      <div class="group" id="toolGroup">
+        <button id="brushBtn" class="active" title="Brush (paint)">
+          <span class="icon brush"></span>Brush
+        </button>
+        <button id="eraserBtn" title="Eraser (clear to transparent)">
+          <span class="icon eraser"></span>Eraser
+        </button>
+        <button id="clearBtn" class="small" title="Clear all pixels">Clear</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="group">
+        <span class="label">Color:</span>
+        <div class="swatches" id="swatches"></div>
+        <input id="colorPicker" type="color" title="Custom color" value="#000000" />
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="group">
+        <span class="label">Zoom:</span>
+        <button id="zoomOut" class="small" title="Decrease pixel size">−</button>
+        <span id="zoomLabel" class="label">18px</span>
+        <button id="zoomIn" class="small" title="Increase pixel size">+</button>
+      </div>
+    </div>
+
+    <div class="canvas-wrap" id="canvasWrap" aria-label="Pixel canvas">
+      <canvas id="canvas" width="32" height="32"></canvas>
+      <div class="grid-overlay"></div>
+    </div>
+
+    <div class="footer">
+      <div class="hint">
+        Tip: Hold mouse and drag to paint. Selecting a color switches back to Brush automatically.
+      </div>
+
+      <div class="group">
+        <span class="label">Export scale:</span>
+        <select id="exportScale" title="Scale factor for exported PNG">
+          <option value="1">1×</option>
+          <option value="2">2×</option>
+          <option value="4" selected>4×</option>
+          <option value="8">8×</option>
+          <option value="16">16×</option>
+          <option value="32">32×</option>
+        </select>
+        <button id="exportBtn" title="Export PNG">Export PNG</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+(function(){
+  const gridW = 32, gridH = 32; // logical canvas size in pixels
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+
+  // Initial state
+  let tool = 'brush'; // 'brush' | 'eraser'
+  let isDrawing = false;
+  let currentColor = '#000000';
+  let pixelSize = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--pixel-size')) || 18;
+
+  // UI elements
+  const brushBtn = document.getElementById('brushBtn');
+  const eraserBtn = document.getElementById('eraserBtn');
+  const clearBtn = document.getElementById('clearBtn');
+  const swatchesEl = document.getElementById('swatches');
+  const colorPicker = document.getElementById('colorPicker');
+  const exportBtn = document.getElementById('exportBtn');
+  const exportScale = document.getElementById('exportScale');
+  const zoomIn = document.getElementById('zoomIn');
+  const zoomOut = document.getElementById('zoomOut');
+  const zoomLabel = document.getElementById('zoomLabel');
+
+  // Set canvas logical size
+  canvas.width = gridW;
+  canvas.height = gridH;
+
+  // Update CSS vars for sizing
+  function applyPixelSize() {
+    document.documentElement.style.setProperty('--pixel-size', pixelSize + 'px');
+    zoomLabel.textContent = pixelSize + 'px';
+  }
+  applyPixelSize();
+
+  // Palette
+  const defaultPalette = [
+    '#000000', '#ffffff', '#808080', '#c0c0c0',
+    '#ff0000', '#800000', '#ffa500', '#a52a2a',
+    '#ffff00', '#808000', '#00ff00', '#008000',
+    '#00ffff', '#008080', '#0000ff', '#000080',
+    '#ff00ff', '#800080', '#ffc0cb', '#ff7f50',
+    '#8b4513', '#cd853f', '#2f4f4f', '#4b0082'
+  ];
+
+  function renderSwatches() {
+    swatchesEl.innerHTML = '';
+    defaultPalette.forEach(color => {
+      const div = document.createElement('button');
+      div.className = 'swatch';
+      div.title = color;
+      div.style.background = color;
+      if (color.toLowerCase() === currentColor.toLowerCase()) {
+        div.classList.add('selected');
+      }
+      div.addEventListener('click', () => {
+        currentColor = color;
+        colorPicker.value = toHex(color);
+        setTool('brush');
+        renderSwatches();
+      });
+      swatchesEl.appendChild(div);
+    });
+  }
+  renderSwatches();
+
+  // Tool switching
+  function setTool(next) {
+    tool = next;
+    brushBtn.classList.toggle('active', tool === 'brush');
+    eraserBtn.classList.toggle('active', tool === 'eraser');
+  }
+
+  brushBtn.addEventListener('click', () => setTool('brush'));
+  eraserBtn.addEventListener('click', () => setTool(tool === 'eraser' ? 'brush' : 'eraser'));
+  clearBtn.addEventListener('click', () => {
+    if (confirm('Clear the entire canvas?')) {
+      ctx.clearRect(0, 0, gridW, gridH);
+    }
+  });
+
+  // Color picker
+  colorPicker.addEventListener('input', (e) => {
+    currentColor = e.target.value;
+    setTool('brush');
+    renderSwatches();
+  });
+
+  // Zoom controls
+  zoomIn.addEventListener('click', () => {
+    pixelSize = Math.min(48, pixelSize + 2);
+    applyPixelSize();
+  });
+  zoomOut.addEventListener('click', () => {
+    pixelSize = Math.max(6, pixelSize - 2);
+    applyPixelSize();
+  });
+
+  // Painting helpers
+  function posToPixel(e) {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left) / rect.width * gridW);
+    const y = Math.floor((e.clientY - rect.top) / rect.height * gridH);
+    if (x < 0 || y < 0 || x >= gridW || y >= gridH) return null;
+    return { x, y };
+  }
+
+  function drawAtPixel(x, y) {
+    if (tool === 'eraser') {
+      ctx.clearRect(x, y, 1, 1); // transparent
+    } else {
+      ctx.fillStyle = currentColor;
+      ctx.fillRect(x, y, 1, 1);
+    }
+  }
+
+  // Pointer events
+  canvas.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    const p = posToPixel(e);
+    if (!p) return;
+    isDrawing = true;
+    canvas.setPointerCapture(e.pointerId);
+    drawAtPixel(p.x, p.y);
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!isDrawing) return;
+    const p = posToPixel(e);
+    if (!p) return;
+    drawAtPixel(p.x, p.y);
+  });
+
+  function stopDrawing(e) {
+    if (isDrawing) {
+      isDrawing = false;
+      try { canvas.releasePointerCapture(e.pointerId); } catch {}
+    }
+  }
+  canvas.addEventListener('pointerup', stopDrawing);
+  canvas.addEventListener('pointercancel', stopDrawing);
+  canvas.addEventListener('pointerleave', stopDrawing);
+
+  // Right-click as eraser (optional convenience)
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button === 2) {
+      const prev = tool;
+      const p = posToPixel(e);
+      if (p) {
+        drawAtPixel(p.x, p.y);
+      }
+    }
+  });
+
+  // Export
+  exportBtn.addEventListener('click', () => {
+    const scale = parseInt(exportScale.value, 10) || 1;
+    const outW = gridW * scale;
+    const outH = gridH * scale;
+
+    const out = document.createElement('canvas');
+    out.width = outW;
+    out.height = outH;
+
+    const octx = out.getContext('2d');
+    octx.imageSmoothingEnabled = false;
+
+    // Draw scaled up with nearest-neighbor
+    octx.clearRect(0, 0, outW, outH);
+    octx.drawImage(canvas, 0, 0, gridW, gridH, 0, 0, outW, outH);
+
+    // Download
+    if (out.toBlob) {
+      out.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        triggerDownload(url, 'pixel-art.png');
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+      }, 'image/png');
+    } else {
+      // Fallback
+      const url = out.toDataURL('image/png');
+      triggerDownload(url, 'pixel-art.png');
+    }
+  });
+
+  function triggerDownload(url, filename) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  }
+
+  function toHex(c) {
+    // Normalize to 7-char #rrggbb
+    const ctx2 = document.createElement('canvas').getContext('2d');
+    ctx2.fillStyle = c;
+    const norm = ctx2.fillStyle; // rgb(...) or #rrggbb
+    if (norm.startsWith('rgb')) {
+      const m = norm.match(/\d+/g).map(Number);
+      return '#' + m.slice(0,3).map(v => v.toString(16).padStart(2, '0')).join('');
+    }
+    return norm;
+  }
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e) => {
+    if (e.target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+    if (e.key.toLowerCase() === 'b') setTool('brush');
+    if (e.key.toLowerCase() === 'e') setTool('eraser');
+    if (e.key === '+' || e.key === '=') { pixelSize = Math.min(48, pixelSize + 2); applyPixelSize(); }
+    if (e.key === '-' || e.key === '_') { pixelSize = Math.max(6, pixelSize - 2); applyPixelSize(); }
+  });
+})();
+</script>
+</body>
+</html>
