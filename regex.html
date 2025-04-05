@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Regex Tester — Single-file, dependency-free</title>
+  <style>
+    :root{
+      --bg: #0f172a;          /* slate-900 */
+      --panel: #111827;       /* gray-900 */
+      --muted: #94a3b8;       /* slate-400 */
+      --text: #e5e7eb;        /* gray-200 */
+      --accent: #38bdf8;      /* sky-400 */
+      --accent-2: #22d3ee;    /* cyan-400 */
+      --match-bg: #fef08a;    /* yellow-200 */
+      --match-text: #1f2937;  /* gray-800 */
+      --error: #fda4af;       /* rose-300 */
+      --ok: #86efac;          /* green-300 */
+      --focus: #60a5fa;       /* blue-400 */
+      --border: #1f2937;      /* gray-800 */
+      --code: #0b1220;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: linear-gradient(180deg, #0b1020 0%, var(--bg) 60%);
+      color: var(--text);
+      font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    header {
+      padding: 18px 20px 8px;
+    }
+    header h1 {
+      margin: 0 0 6px;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    header .sub {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    main {
+      display: grid;
+      gap: 16px;
+      padding: 0 16px 18px;
+      grid-template-columns: 1.3fr 1fr;
+      grid-template-areas:
+        "left right"
+        "left right";
+    }
+    @media (max-width: 1000px) {
+      main {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+          "left"
+          "right";
+      }
+    }
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 10px 30px rgba(0,0,0,0.26);
+    }
+    .panel {
+      padding: 14px;
+    }
+    .panel h2 {
+      margin: 0 0 10px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 600;
+      letter-spacing: 0.2px;
+      text-transform: uppercase;
+    }
+    .controls {
+      grid-area: left;
+      display: grid;
+      gap: 12px;
+    }
+    .regex-row {
+      display: grid;
+      gap: 10px;
+    }
+    .regex-input {
+      display: flex;
+      align-items: stretch;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .slash {
+      color: var(--muted);
+      align-self: center;
+      font-weight: 600;
+      user-select: none;
+    }
+    .input {
+      display: flex;
+      align-items: center;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+      gap: 8px;
+      min-height: 40px;
+    }
+    input[type="text"], textarea {
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text);
+      width: 100%;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+    }
+    textarea {
+      min-height: 160px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+    .flags {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .flag {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+      user-select: none;
+      cursor: pointer;
+    }
+    .flag input {
+      accent-color: var(--accent);
+    }
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .error {
+      color: var(--error);
+      font-size: 12px;
+      margin-top: -6px;
+    }
+    .out-wrap {
+      display: grid;
+      gap: 10px;
+    }
+    .summary {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .summary .count {
+      color: var(--ok);
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .btn {
+      background: linear-gradient(180deg, rgba(56,189,248,0.2), rgba(34,211,238,0.15));
+      color: var(--text);
+      border: 1px solid var(--border);
+      padding: 8px 10px;
+      border-radius: 10px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn:hover { filter: brightness(1.08); }
+    .btn:active { transform: translateY(1px); }
+    .btn.secondary {
+      background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+    }
+
+    .highlight {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 13px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      word-break: break-word;
+      min-height: 120px;
+    }
+    .match {
+      background: var(--match-bg);
+      color: var(--match-text);
+      border-radius: 4px;
+      padding: 0 2px;
+    }
+    .zwm {
+      display: inline-block;
+      width: 0;
+      border-left: 2px solid var(--accent-2);
+      margin: 0 0 0 -1px;
+      height: 1em;
+      vertical-align: text-bottom;
+    }
+
+    .right {
+      grid-area: right;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+    .cheatsheet .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px 12px;
+    }
+    @media (max-width: 560px) {
+      .cheatsheet .grid { grid-template-columns: 1fr; }
+    }
+    .cs-item {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+    }
+    .cs-item code {
+      background: var(--code);
+      color: #d1e7ff;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 2px 6px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+    }
+    .cs-item .desc {
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 4px;
+    }
+    .footer {
+      padding: 8px 16px 18px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .input:focus-within, .highlight:focus-within {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+    }
+    .kbd {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1px 4px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Regex Tester</h1>
+    <div class="sub">Type a regular expression and test string. Matches highlight in real-time.</div>
+  </header>
+
+  <main>
+    <section class="controls">
+      <div class="card panel regex-row" role="region" aria-label="Regular expression">
+        <h2>Regular expression</h2>
+        <div class="regex-input">
+          <span class="slash">/</span>
+          <div class="input" style="flex:1;">
+            <input id="pattern" type="text" placeholder="e.g. ^(\\w+)\\s+(\\w+)$" spellcheck="false" aria-label="Pattern" />
+          </div>
+          <span class="slash">/</span>
+          <div class="flags" role="group" aria-label="Flags">
+            <label class="flag" title="Global search">
+              <input type="checkbox" id="flag-g" checked /> g
+            </label>
+            <label class="flag" title="Ignore case">
+              <input type="checkbox" id="flag-i" /> i
+            </label>
+            <label class="flag" title="Multiline (^ and $ match line boundaries)">
+              <input type="checkbox" id="flag-m" /> m
+            </label>
+            <label class="flag" title="Dot matches newlines">
+              <input type="checkbox" id="flag-s" /> s
+            </label>
+            <label class="flag" title="Unicode mode">
+              <input type="checkbox" id="flag-u" /> u
+            </label>
+            <label class="flag" title="Sticky (matches from lastIndex only)">
+              <input type="checkbox" id="flag-y" /> y
+            </label>
+          </div>
+        </div>
+        <div id="error" class="error" role="alert" aria-live="polite"></div>
+      </div>
+
+      <div class="card panel" role="region" aria-label="Test string">
+        <h2>Test string</h2>
+        <div class="input">
+          <textarea id="test" placeholder="Paste or type text here..." aria-label="Test string"></textarea>
+        </div>
+        <div class="hint">Tip: Zero-width matches (like ^, $, or lookarounds) are shown as thin cyan bars.</div>
+      </div>
+
+      <div class="card panel out-wrap" role="region" aria-label="Matches">
+        <div class="summary">
+          <div class="count" id="count">0 matches</div>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <button class="btn secondary" id="clearBtn" title="Clear both fields">Clear</button>
+            <button class="btn" id="shareBtn" title="Copy a shareable link">Share</button>
+          </div>
+        </div>
+        <div id="highlight" class="highlight" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <aside class="right">
+      <div class="card panel cheatsheet" role="region" aria-label="Regex cheat sheet">
+        <h2>Cheat sheet</h2>
+        <div class="grid">
+          <div class="cs-item">
+            <code>\\d</code>, <code>\\D</code>
+            <div class="desc">Digit / non-digit</div>
+          </div>
+          <div class="cs-item">
+            <code>\\w</code>, <code>\\W</code>
+            <div class="desc">Word char [A-Za-z0-9_ ] / non-word</div>
+          </div>
+          <div class="cs-item">
+            <code>\\s</code>, <code>\\S</code>
+            <div class="desc">Whitespace / non-whitespace</div>
+          </div>
+          <div class="cs-item">
+            <code>.</code>
+            <div class="desc">Any char (not newline unless <code>s</code>)</div>
+          </div>
+          <div class="cs-item">
+            <code>[a-z]</code>, <code>[^...]</code>
+            <div class="desc">Character class / negated class</div>
+          </div>
+          <div class="cs-item">
+            <code>^</code>, <code>$</code>
+            <div class="desc">Start / end of string (or line with <code>m</code>)</div>
+          </div>
+          <div class="cs-item">
+            <code>\\b</code>, <code>\\B</code>
+            <div class="desc">Word boundary / non-boundary</div>
+          </div>
+          <div class="cs-item">
+            <code>?</code>, <code>*</code>, <code>+</code>, <code>{n,m}</code>
+            <div class="desc">Quantifiers (append <code>?</code> for lazy)</div>
+          </div>
+          <div class="cs-item">
+            <code>(...)</code>, <code>(?:...)</code>
+            <div class="desc">Capturing / non-capturing group</div>
+          </div>
+          <div class="cs-item">
+            <code>(?=...)</code>, <code>(?!...)</code>
+            <div class="desc">Lookahead / negative lookahead</div>
+          </div>
+          <div class="cs-item">
+            <code>(?&lt;=...)</code>, <code>(?&lt;!...)</code>
+            <div class="desc">Lookbehind / negative lookbehind</div>
+          </div>
+          <div class="cs-item">
+            <code>a|b</code>
+            <div class="desc">Alternation (a or b)</div>
+          </div>
+          <div class="cs-item">
+            <code>Flags: g i m s u y</code>
+            <div class="desc">Global, Ignore case, Multiline, DotAll, Unicode, Sticky</div>
+          </div>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <div class="footer">
+    Keyboard: focus a field then press <span class="kbd">Ctrl</span>+<span class="kbd">Enter</span> to toggle <code>g</code>.
+  </div>
+
+  <script>
+    (function () {
+      const $ = sel => document.querySelector(sel);
+
+      const patternEl = $('#pattern');
+      const testEl = $('#test');
+      const errorEl = $('#error');
+      const countEl = $('#count');
+      const highlightEl = $('#highlight');
+      const shareBtn = $('#shareBtn');
+      const clearBtn = $('#clearBtn');
+
+      const flagsEls = {
+        g: $('#flag-g'),
+        i: $('#flag-i'),
+        m: $('#flag-m'),
+        s: $('#flag-s'),
+        u: $('#flag-u'),
+        y: $('#flag-y'),
+      };
+
+      // Defaults
+      const defaults = {
+        pattern: String.raw`\b\w+\b`,
+        flags: 'g',
+        test: [
+          'The quick brown fox jumps over the lazy dog.',
+          'Email: alice@example.com, Bob@example.com',
+          'Lines:',
+          '  1) apples',
+          '  2) bananas',
+          '  3) cherries'
+        ].join('\n')
+      };
+
+      function escapeHtml(str) {
+        return str
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;');
+      }
+
+      function getFlagsFromUI() {
+        return Object.keys(flagsEls).filter(k => flagsEls[k].checked).join('');
+      }
+
+      function setFlagsInUI(flagsStr) {
+        Object.keys(flagsEls).forEach(k => {
+          flagsEls[k].checked = flagsStr.includes(k);
+        });
+      }
+
+      function buildHighlightedHTML(str, re) {
+        let parts = [];
+        let cursor = 0;
+        let count = 0;
+
+        // Ensure predictable scanning
+        if (re.global || re.sticky) re.lastIndex = 0;
+
+        // To avoid infinite loops for patterns like /(?=.)/g, guard iterations
+        const MAX_ITER = Math.max(1, str.length * 4 + 1000);
+        let iter = 0;
+
+        while (iter++ < MAX_ITER) {
+          const m = re.exec(str);
+          if (!m) break;
+
+          count++;
+          const start = m.index;
+          const end = m.index + m[0].length;
+
+          // Non-matching chunk
+          if (cursor < start) {
+            parts.push(escapeHtml(str.slice(cursor, start)));
+            cursor = start;
+          }
+
+          if (end === start) {
+            // Zero-width: render a thin marker, nudge lastIndex to avoid stalling
+            parts.push(`<span class="zwm" title="Zero-width match at ${start}"></span>`);
+            if (re.lastIndex === start) {
+              re.lastIndex = start + 1;
+            }
+            // cursor unchanged so we still render the character on next non-match append
+          } else {
+            const title = `Match #${count} [${start}–${end}]`;
+            parts.push(`<span class="match" title="${title}">${escapeHtml(str.slice(start, end))}</span>`);
+            cursor = end;
+          }
+
+          // If not global/sticky, only the first match applies
+          if (!(re.global || re.sticky)) break;
+        }
+
+        // Append remainder
+        if (cursor < str.length) parts.push(escapeHtml(str.slice(cursor)));
+
+        return { html: parts.join(''), count };
+      }
+
+      function update() {
+        const pattern = patternEl.value;
+        const flags = getFlagsFromUI();
+        const input = testEl.value;
+
+        // Clear outputs first
+        errorEl.textContent = '';
+        countEl.textContent = '0 matches';
+        highlightEl.innerHTML = escapeHtml(input);
+
+        if (!pattern) {
+          countEl.textContent = '0 matches';
+          return;
+        }
+
+        let re;
+        try {
+          re = new RegExp(pattern, flags);
+        } catch (e) {
+          errorEl.textContent = e.message || String(e);
+          countEl.textContent = '—';
+          return;
+        }
+
+        const { html, count } = buildHighlightedHTML(input, re);
+        highlightEl.innerHTML = html;
+        countEl.textContent = `${count} ${count === 1 ? 'match' : 'matches'}`;
+      }
+
+      function debounce(fn, ms) {
+        let t;
+        return (...args) => {
+          clearTimeout(t);
+          t = setTimeout(() => fn(...args), ms);
+        };
+      }
+
+      const debouncedUpdate = debounce(() => {
+        update();
+        syncHash();
+      }, 60);
+
+      // Shareable URL via hash
+      function syncHash() {
+        const obj = {
+          re: patternEl.value,
+          f: getFlagsFromUI(),
+          s: testEl.value
+        };
+        const qs = Object.entries(obj)
+          .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+          .join('&');
+        const next = `#${qs}`;
+        if (location.hash !== next) {
+          history.replaceState(null, '', next);
+        }
+      }
+
+      function loadFromHash() {
+        if (!location.hash) return false;
+        const raw = location.hash.slice(1);
+        const params = new URLSearchParams(raw);
+        const re = params.get('re');
+        const f = params.get('f');
+        const s = params.get('s');
+        if (re === null && f === null && s === null) return false;
+
+        patternEl.value = re ?? '';
+        setFlagsInUI(f ?? '');
+        testEl.value = s ?? '';
+        return true;
+      }
+
+      function copyShareLink() {
+        syncHash();
+        const url = location.href;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(url).then(() => {
+            shareBtn.textContent = 'Copied!';
+            setTimeout(() => (shareBtn.textContent = 'Share'), 1200);
+          }, () => {
+            fallbackCopy(url);
+          });
+        } else {
+          fallbackCopy(url);
+        }
+      }
+
+      function fallbackCopy(text) {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'absolute';
+        ta.style.left = '-9999px';
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch {}
+        document.body.removeChild(ta);
+        shareBtn.textContent = 'Copied!';
+        setTimeout(() => (shareBtn.textContent = 'Share'), 1200);
+      }
+
+      // Wire up events
+      patternEl.addEventListener('input', debouncedUpdate);
+      testEl.addEventListener('input', debouncedUpdate);
+      Object.values(flagsEls).forEach(el => el.addEventListener('change', debouncedUpdate));
+
+      // Keyboard: Ctrl+Enter toggles g
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+          flagsEls.g.checked = !flagsEls.g.checked;
+          debouncedUpdate();
+        }
+      });
+
+      shareBtn.addEventListener('click', copyShareLink);
+      clearBtn.addEventListener('click', () => {
+        patternEl.value = '';
+        testEl.value = '';
+        debouncedUpdate();
+        patternEl.focus();
+      });
+
+      // Init
+      const loaded = loadFromHash();
+      if (!loaded) {
+        patternEl.value = defaults.pattern;
+        setFlagsInUI(defaults.flags);
+        testEl.value = defaults.test;
+      }
+      update();
+      syncHash();
+    })();
+  </script>
+</body>
+</html>
