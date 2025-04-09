@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Matrix Digital Rain</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ui-bg: rgba(0,0,0,0.45);
+      --ui-border: rgba(255,255,255,0.12);
+      --ui-text: #e8e8e8;
+      --ui-muted: #b8b8b8;
+      --ui-accent: #00ff66;
+      --shadow: 0 8px 24px rgba(0,0,0,0.35);
+    }
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: #000;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    }
+    canvas#matrix {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100dvh;
+      display: block;
+      background: #000;
+      outline: none;
+    }
+    /* Controls panel */
+    .panel {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      display: grid;
+      gap: 10px;
+      padding: 14px 14px 12px;
+      width: min(420px, calc(100vw - 32px));
+      background: var(--ui-bg);
+      border: 1px solid var(--ui-border);
+      border-radius: 12px;
+      backdrop-filter: blur(6px);
+      box-shadow: var(--shadow);
+      color: var(--ui-text);
+      user-select: none;
+    }
+    .panel h1 {
+      margin: 0 0 4px 0;
+      font-size: 16px;
+      line-height: 1.2;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .panel .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 10px;
+    }
+    .panel .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .panel label {
+      font-size: 12px;
+      color: var(--ui-muted);
+      display: block;
+      margin-bottom: 4px;
+    }
+    .panel input[type="range"] {
+      width: 100%;
+    }
+    .panel input[type="text"] {
+      width: 100%;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--ui-border);
+      background: rgba(18,18,18,0.6);
+      color: var(--ui-text);
+      outline: none;
+    }
+    .panel input[type="color"] {
+      width: 100%;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid var(--ui-border);
+      background: rgba(18,18,18,0.6);
+      padding: 0;
+    }
+    .panel .val {
+      font-variant-numeric: tabular-nums;
+      font-size: 12px;
+      color: var(--ui-muted);
+      min-width: 48px;
+      text-align: right;
+    }
+    .panel .buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .panel button, .panel .toggle {
+      appearance: none;
+      border: 1px solid var(--ui-border);
+      background: rgba(24,24,24,0.6);
+      color: var(--ui-text);
+      border-radius: 999px;
+      padding: 8px 12px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s ease, border-color 0.2s ease;
+    }
+    .panel button:hover, .panel .toggle:hover {
+      border-color: rgba(255,255,255,0.2);
+      background: rgba(36,36,36,0.7);
+    }
+    .panel button.accent {
+      border-color: rgba(0,255,102,0.35);
+      background: rgba(0,255,102,0.08);
+      color: #d2ffd5;
+    }
+    .panel .toggle input {
+      margin-right: 6px;
+      transform: translateY(1px);
+    }
+    .panel .muted {
+      font-size: 11px;
+      color: var(--ui-muted);
+    }
+    .foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .hint {
+      position: fixed;
+      bottom: 10px;
+      right: 12px;
+      color: rgba(255,255,255,0.45);
+      font-size: 12px;
+      background: rgba(0,0,0,0.35);
+      padding: 6px 8px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(4px);
+    }
+    @media (max-width: 540px) {
+      .panel .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="matrix" aria-label="Matrix digital rain animation" role="img"></canvas>
+
+  <div class="panel" id="panel" aria-label="Controls">
+    <h1>
+      Matrix: Digital Rain
+      <span class="muted" style="margin-left:auto">Press H to hide/show panel</span>
+    </h1>
+
+    <div class="grid">
+      <div>
+        <label for="speed">Speed (px/s)</label>
+        <div class="row">
+          <input id="speed" type="range" min="40" max="1400" step="10" />
+          <div class="val" id="speedVal"></div>
+        </div>
+      </div>
+      <div>
+        <label for="fontSize">Font size (px)</label>
+        <div class="row">
+          <input id="fontSize" type="range" min="10" max="40" step="1" />
+          <div class="val" id="fontSizeVal"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div>
+        <label for="density">Column density</label>
+        <div class="row">
+          <input id="density" type="range" min="0.4" max="1.8" step="0.02" />
+          <div class="val" id="densityVal"></div>
+        </div>
+      </div>
+      <div>
+        <label for="trail">Trail fade</label>
+        <div class="row">
+          <input id="trail" type="range" min="0.01" max="0.25" step="0.005" />
+          <div class="val" id="trailVal"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <div>
+        <label for="color">Color</label>
+        <input id="color" type="color" />
+      </div>
+      <div>
+        <label for="glow">Glow</label>
+        <div class="row">
+          <input id="glow" type="range" min="0" max="2" step="0.05" />
+          <div class="val" id="glowVal"></div>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <label for="chars">Characters</label>
+      <input id="chars" type="text" spellcheck="false" autocomplete="off" />
+    </div>
+
+    <div class="buttons">
+      <button id="playPause" class="accent">Pause</button>
+      <button id="randomize">Randomize</button>
+      <button id="reset">Reset</button>
+      <label class="toggle"><input id="headHighlight" type="checkbox" checked />Head highlight</label>
+      <label class="toggle"><input id="showPanel" type="checkbox" checked />Show panel</label>
+    </div>
+
+    <div class="foot">
+      <div class="muted">FPS: <span id="fps">—</span></div>
+      <div class="muted">Columns: <span id="cols">—</span></div>
+    </div>
+  </div>
+
+  <div class="hint">Click canvas to focus • Space = pause/play • H = toggle panel</div>
+
+  <script>
+    ;(() => {
+      const canvas = document.getElementById('matrix');
+      const ctx = canvas.getContext('2d', { alpha: false });
+
+      const defaults = {
+        speed: 260,        // px per second
+        fontSize: 18,      // px
+        density: 1.0,      // relative column density (higher = more columns)
+        trail: 0.06,       // per-60fps fade opacity (converted to dt-aware)
+        color: '#00ff66',  // base color
+        glow: 0.8,         // 0..2
+        headHighlight: true,
+        chars:
+          'アイウエオカキクケコサシスセソタチツテトナニヌネノ' +
+          'ハヒフヘホマミムメモヤユヨラリルレロワヲン' +
+          '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+      };
+
+      // Persist settings
+      const storeKey = 'matrix-rain-settings-v1';
+      function loadSettings() {
+        try {
+          const raw = localStorage.getItem(storeKey);
+          if (!raw) return { ...defaults };
+          const data = JSON.parse(raw);
+          return { ...defaults, ...data };
+        } catch {
+          return { ...defaults };
+        }
+      }
+      function saveSettings() {
+        try {
+          localStorage.setItem(storeKey, JSON.stringify(settings));
+        } catch {}
+      }
+
+      let settings = loadSettings();
+
+      // UI elements
+      const ui = {
+        speed: document.getElementById('speed'),
+        fontSize: document.getElementById('fontSize'),
+        density: document.getElementById('density'),
+        trail: document.getElementById('trail'),
+        color: document.getElementById('color'),
+        glow: document.getElementById('glow'),
+        headHighlight: document.getElementById('headHighlight'),
+        chars: document.getElementById('chars'),
+        speedVal: document.getElementById('speedVal'),
+        fontSizeVal: document.getElementById('fontSizeVal'),
+        densityVal: document.getElementById('densityVal'),
+        trailVal: document.getElementById('trailVal'),
+        glowVal: document.getElementById('glowVal'),
+        playPause: document.getElementById('playPause'),
+        randomize: document.getElementById('randomize'),
+        reset: document.getElementById('reset'),
+        fps: document.getElementById('fps'),
+        cols: document.getElementById('cols'),
+        showPanel: document.getElementById('showPanel'),
+        panel: document.getElementById('panel'),
+      };
+
+      // Initialize UI with settings
+      function initUI() {
+        ui.speed.value = settings.speed;
+        ui.fontSize.value = settings.fontSize;
+        ui.density.value = settings.density;
+        ui.trail.value = settings.trail;
+        ui.color.value = toHex(settings.color);
+        ui.glow.value = settings.glow;
+        ui.headHighlight.checked = !!settings.headHighlight;
+        ui.chars.value = settings.chars;
+        ui.showPanel.checked = true;
+        writeVals();
+      }
+      function writeVals() {
+        ui.speedVal.textContent = Math.round(+ui.speed.value);
+        ui.fontSizeVal.textContent = Math.round(+ui.fontSize.value);
+        ui.densityVal.textContent = (+ui.density.value).toFixed(2);
+        ui.trailVal.textContent = (+ui.trail.value).toFixed(3);
+        ui.glowVal.textContent = (+ui.glow.value).toFixed(2);
+      }
+
+      // Helpers: Color conversions
+      function toHex(input) {
+        // Accept #RRGGBB, #RGB, or rgb/rgba
+        if (typeof input !== 'string') return '#00ff66';
+        let s = input.trim();
+        if (s.startsWith('#')) {
+          if (s.length === 4) {
+            // #rgb
+            const r = s[1], g = s[2], b = s[3];
+            return '#' + r + r + g + g + b + b;
+          }
+          if (s.length >= 7) return s.slice(0, 7);
+        }
+        if (s.startsWith('rgb')) {
+          const m = s.match(/rgba?\(([\d.]+)[^\d]+([\d.]+)[^\d]+([\d.]+)/i);
+          if (m) {
+            const r = Math.max(0, Math.min(255, Math.round(+m[1])));
+            const g = Math.max(0, Math.min(255, Math.round(+m[2])));
+            const b = Math.max(0, Math.min(255, Math.round(+m[3])));
+            return rgbToHex(r, g, b);
+          }
+        }
+        return '#00ff66';
+      }
+      function rgbToHex(r,g,b) {
+        return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+      }
+      function hexToRgb(hex) {
+        hex = toHex(hex);
+        const n = parseInt(hex.slice(1), 16);
+        return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+      }
+      function mixHex(a, b, t) {
+        const A = hexToRgb(a), B = hexToRgb(b);
+        const r = Math.round(A.r + (B.r - A.r) * t);
+        const g = Math.round(A.g + (B.g - A.g) * t);
+        const bC = Math.round(A.b + (B.b - A.b) * t);
+        return rgbToHex(r,g,bC);
+      }
+
+      // Animation/state
+      let drops = []; // columns
+      let columnWidth = 0;
+      let lineHeight = 0;
+      let columnsCount = 0;
+      let running = true;
+      let lastTime = performance.now();
+      let fpsSMA = 0; let fpsSamples = 0;
+      let charArray = Array.from(settings.chars);
+      let headColor = mixHex(settings.color, '#ffffff', 0.65);
+
+      function resize() {
+        const dpr = window.devicePixelRatio || 1;
+        const w = Math.max(1, Math.floor(window.innerWidth));
+        const h = Math.max(1, Math.floor(window.innerHeight));
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+        canvas.style.width = w + 'px';
+        canvas.style.height = h + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        ctx.imageSmoothingEnabled = false;
+
+        // Layout
+        lineHeight = settings.fontSize * 1.05;
+        // Column width based on density; clamp to avoid overlap
+        const minColWidth = settings.fontSize * 0.62;
+        columnWidth = Math.max(minColWidth, settings.fontSize / Math.max(0.05, settings.density));
+        columnsCount = Math.max(1, Math.floor(w / columnWidth));
+        drops = new Array(columnsCount).fill(0).map(() => ({
+          y: -Math.random() * h, // start above
+          speed: settings.speed * (0.80 + Math.random() * 0.40), // px/s
+          lastRow: -Infinity,
+        }));
+
+        // Font
+        ctx.font = `${settings.fontSize}px Consolas, "Courier New", monospace`;
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+
+        // Clear background
+        ctx.fillStyle = '#000';
+        ctx.fillRect(0, 0, w, h);
+
+        ui.cols.textContent = String(columnsCount);
+      }
+
+      function randChar() {
+        if (charArray.length === 0) return '';
+        const i = (Math.random() * charArray.length) | 0;
+        return charArray[i];
+      }
+
+      function frame(now) {
+        if (!running) {
+          lastTime = now;
+          requestAnimationFrame(frame);
+          return;
+        }
+        const dtMs = now - lastTime;
+        const dt = Math.max(0, Math.min(0.1, dtMs / 1000)); // cap dt
+        lastTime = now;
+
+        // FPS calc (simple moving average)
+        const instFps = dt > 0 ? (1 / dt) : 0;
+        fpsSamples = Math.min(60, fpsSamples + 1);
+        fpsSMA = fpsSMA + (instFps - fpsSMA) / fpsSamples;
+        if ((now | 0) % 250 < 16) ui.fps.textContent = Math.round(fpsSMA);
+
+        const width = canvas.clientWidth;
+        const height = canvas.clientHeight;
+
+        // Trail fade: convert per-60fps alpha to dt-aware alpha
+        const a = 1 - Math.pow(1 - settings.trail, dt * 60);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = `rgba(0,0,0,${a.toFixed(4)})`;
+        ctx.fillRect(0, 0, width, height);
+        ctx.globalAlpha = 1;
+
+        // Draw columns
+        ctx.shadowColor = settings.color;
+        for (let i = 0; i < drops.length; i++) {
+          const col = drops[i];
+
+          // Advance
+          col.y += col.speed * dt;
+
+          // Choose row and draw only when entering a new grid row
+          const row = Math.floor(col.y / lineHeight);
+          if (row !== col.lastRow) {
+            const x = i * columnWidth;
+            const y = row * lineHeight;
+
+            // Character
+            const ch = randChar();
+
+            // Head highlight (brighter color + glow)
+            if (settings.headHighlight) {
+              ctx.fillStyle = headColor;
+              ctx.shadowBlur = settings.glow * settings.fontSize;
+            } else {
+              ctx.fillStyle = settings.color;
+              ctx.shadowBlur = settings.glow * 0.5 * settings.fontSize;
+            }
+
+            ctx.fillText(ch, x, y);
+
+            col.lastRow = row;
+          }
+
+          // Reset when off-screen, with randomized re-entry
+          if (col.y > height + Math.random() * height * 0.4) {
+            col.y = -Math.random() * height * 0.5;
+            col.speed = settings.speed * (0.80 + Math.random() * 0.40);
+            col.lastRow = -Infinity;
+          }
+        }
+
+        requestAnimationFrame(frame);
+      }
+
+      // UI events
+      function applyAndSave() {
+        settings.speed = clamp(+ui.speed.value, 40, 1400);
+        settings.fontSize = clamp(+ui.fontSize.value, 10, 40);
+        settings.density = clamp(+ui.density.value, 0.4, 1.8);
+        settings.trail = clamp(+ui.trail.value, 0.01, 0.25);
+        settings.color = toHex(ui.color.value);
+        settings.glow = clamp(+ui.glow.value, 0, 2);
+        settings.headHighlight = !!ui.headHighlight.checked;
+
+        const txt = ui.chars.value;
+        settings.chars = txt && txt.trim().length ? txt : defaults.chars;
+        charArray = Array.from(settings.chars);
+        headColor = mixHex(settings.color, '#ffffff', 0.65);
+
+        writeVals();
+        ctx.font = `${settings.fontSize}px Consolas, "Courier New", monospace`;
+        lineHeight = settings.fontSize * 1.05;
+        // Recompute layout that depends on font size/density
+        resize();
+
+        saveSettings();
+      }
+
+      function clamp(n, a, b) { return Math.min(b, Math.max(a, n)); }
+
+      ui.speed.addEventListener('input', applyAndSave);
+      ui.fontSize.addEventListener('input', applyAndSave);
+      ui.density.addEventListener('input', applyAndSave);
+      ui.trail.addEventListener('input', applyAndSave);
+      ui.color.addEventListener('input', applyAndSave);
+      ui.glow.addEventListener('input', applyAndSave);
+      ui.headHighlight.addEventListener('change', applyAndSave);
+      ui.chars.addEventListener('input', applyAndSave);
+
+      ui.playPause.addEventListener('click', () => {
+        running = !running;
+        ui.playPause.textContent = running ? 'Pause' : 'Play';
+        if (running) {
+          lastTime = performance.now();
+          requestAnimationFrame(frame);
+        }
+      });
+
+      ui.randomize.addEventListener('click', () => {
+        // Fun random values that remain legible
+        ui.speed.value = (80 + Math.random() * 1200) | 0;
+        ui.fontSize.value = (12 + Math.random() * 24) | 0;
+        ui.density.value = (0.5 + Math.random() * 1.2).toFixed(2);
+        ui.trail.value = (0.02 + Math.random() * 0.18).toFixed(3);
+        // Color with a green-ish preference
+        const hue = Math.random() < 0.6 ? (100 + Math.random()*40) : (Math.random() * 360);
+        const sat = 70 + Math.random()*25;
+        const lit = 45 + Math.random()*20;
+        ui.color.value = hslToHex(hue, sat, lit);
+        ui.glow.value = (Math.random() * 2).toFixed(2);
+        ui.headHighlight.checked = Math.random() > 0.2;
+
+        // Random subset of default chars
+        ui.chars.value = sampleChars(defaults.chars, 90 + (Math.random()*60)|0);
+
+        applyAndSave();
+      });
+
+      ui.reset.addEventListener('click', () => {
+        settings = { ...defaults };
+        initUI();
+        applyAndSave();
+      });
+
+      ui.showPanel.addEventListener('change', () => {
+        const show = ui.showPanel.checked;
+        ui.panel.style.display = show ? 'grid' : 'none';
+      });
+
+      // Keyboard shortcuts
+      window.addEventListener('keydown', (e) => {
+        if (e.key === ' ') {
+          e.preventDefault();
+          ui.playPause.click();
+        } else if (e.key === 'h' || e.key === 'H') {
+          ui.showPanel.checked = !ui.showPanel.checked;
+          ui.showPanel.dispatchEvent(new Event('change'));
+        }
+      });
+
+      // Canvas focus to receive space key when clicked
+      canvas.addEventListener('click', () => canvas.focus());
+      canvas.tabIndex = 0;
+
+      // Resize handling
+      let resizeRAF = 0;
+      window.addEventListener('resize', () => {
+        cancelAnimationFrame(resizeRAF);
+        resizeRAF = requestAnimationFrame(resize);
+      }, { passive: true });
+
+      // Utility: HSL to HEX
+      function hslToHex(h, s, l) {
+        h = (h % 360 + 360) % 360;
+        s = clamp(s, 0, 100) / 100;
+        l = clamp(l, 0, 100) / 100;
+        const c = (1 - Math.abs(2*l - 1)) * s;
+        const x = c * (1 - Math.abs((h/60) % 2 - 1));
+        const m = l - c/2;
+        let r=0,g=0,b=0;
+        if (h < 60) [r,g,b] = [c,x,0];
+        else if (h < 120) [r,g,b] = [x,c,0];
+        else if (h < 180) [r,g,b] = [0,c,x];
+        else if (h < 240) [r,g,b] = [0,x,c];
+        else if (h < 300) [r,g,b] = [x,0,c];
+        else [r,g,b] = [c,0,x];
+        return rgbToHex(Math.round((r+m)*255), Math.round((g+m)*255), Math.round((b+m)*255));
+      }
+
+      function sampleChars(pool, count) {
+        const arr = Array.from(new Set(Array.from(pool))); // unique
+        if (count >= arr.length) return arr.join('');
+        let out = '';
+        for (let i = 0; i < count; i++) {
+          const idx = (Math.random() * arr.length) | 0;
+          out += arr[idx];
+        }
+        return out;
+      }
+
+      // Kick off
+      initUI();
+      resize();
+      lastTime = performance.now();
+      requestAnimationFrame(frame);
+    })();
+  </script>
+</body>
+</html>
