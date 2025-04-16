@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>JSON Formatter · Validator · Tree Viewer</title>
+<meta name="description" content="Self-contained, dependency-free JSON formatter/validator with collapsible tree and syntax highlighting." />
+<style>
+  :root {
+    --bg: #0b0d10;
+    --panel: #0f1318;
+    --subtle: #161b22;
+    --text: #e6edf3;
+    --muted: #9aa4ad;
+    --accent: #3da6ff;
+    --accent-2: #7ee787;
+    --error: #ff6b6b;
+    --warning: #f7c948;
+    --key: #79c0ff;
+    --str: #a5d6ff;
+    --num: #ffab70;
+    --bool: #ff7b72;
+    --null: #d2a8ff;
+
+    --border: #26323d;
+    --focus: #3da6ff66;
+    --btn-bg: #18202a;
+    --btn-bg-hover: #26323d;
+    --shadow: 0 10px 25px rgba(0,0,0,0.35);
+  }
+  [data-theme="light"] {
+    --bg: #f5f7fb;
+    --panel: #ffffff;
+    --subtle: #f0f3f8;
+    --text: #0c1116;
+    --muted: #5b6b7c;
+    --accent: #0969da;
+    --accent-2: #1a7f37;
+    --error: #b42318;
+    --warning: #9a6700;
+    --key: #0550ae;
+    --str: #0a7bcb;
+    --num: #8a4600;
+    --bool: #ae2e24;
+    --null: #622cbc;
+
+    --border: #d2dae4;
+    --focus: #0969da33;
+    --btn-bg: #eef2f7;
+    --btn-bg-hover: #e3eaf3;
+    --shadow: 0 10px 25px rgba(0,0,0,0.10);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    color: var(--text);
+    background: radial-gradient(1200px 800px at 80% -20%, #156bc01a, transparent 60%) ,
+                radial-gradient(900px 600px at -20% 10%, #22c55e10, transparent 50%) ,
+                var(--bg);
+  }
+
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    backdrop-filter: saturate(120%) blur(10px);
+    background: linear-gradient(to bottom, color-mix(in oklab, var(--bg) 80%, transparent), transparent);
+    border-bottom: 1px solid var(--border);
+  }
+  .topbar {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 12px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: .2px;
+  }
+  .brand .logo {
+    width: 28px; height: 28px; border-radius: 6px;
+    background: conic-gradient(from 210deg, var(--accent), var(--accent-2), var(--accent));
+    box-shadow: inset 0 0 0 3px color-mix(in oklab, var(--panel) 60%, transparent);
+  }
+  .brand .title { font-size: 16px; }
+  .status {
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);
+  }
+  .status .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--muted); box-shadow: 0 0 0 4px color-mix(in oklab, var(--muted) 20%, transparent);
+    transition: background .2s ease, box-shadow .2s ease;
+  }
+  .status.valid .dot { background: var(--accent-2); box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent-2) 25%, transparent); }
+  .status.invalid .dot { background: var(--error); box-shadow: 0 0 0 4px color-mix(in oklab, var(--error) 25%, transparent); }
+
+  .wrap {
+    max-width: 1200px;
+    margin: 16px auto 28px auto;
+    padding: 0 16px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px;
+  }
+  @media (max-width: 960px) {
+    .wrap { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: linear-gradient(180deg, color-mix(in oklab, var(--panel) 100%, transparent), color-mix(in oklab, var(--panel) 86%, transparent));
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 260px;
+  }
+  .panel .toolbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px; padding: 10px 12px; background: color-mix(in oklab, var(--panel) 96%, transparent); border-bottom: 1px solid var(--border);
+  }
+  .toolbar .left, .toolbar .right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .toolbar .label { font-size: 13px; color: var(--muted); font-weight: 600; margin-right: 6px; }
+
+  textarea {
+    width: 100%; height: 100%; min-height: 200px;
+    border: none; outline: none; resize: vertical;
+    padding: 12px 14px 16px 14px; font-size: 14px; line-height: 1.4;
+    color: var(--text); background: transparent; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  }
+  textarea:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+  .panel.error textarea { outline: 2px solid color-mix(in oklab, var(--error) 45%, transparent); }
+
+  .errorbox { border-top: 1px dashed var(--border); background: color-mix(in oklab, var(--error) 8%, var(--panel)); color: var(--text); }
+  .errorbox pre { margin: 0; padding: 10px 12px; white-space: pre-wrap; font-size: 12px; color: color-mix(in oklab, var(--error) 30%, var(--text)); }
+  .errorbox .loc { color: var(--error); font-weight: 600; }
+  .errorbox code { color: var(--text); }
+
+  .views { position: relative; display: flex; flex-direction: column; min-height: 240px; }
+  .view { display: none; height: 100%; }
+  .view.active { display: block; }
+
+  pre {
+    margin: 0; padding: 12px 14px 18px 14px;
+    overflow: auto; font-size: 14px; line-height: 1.45;
+    background: transparent; color: var(--text);
+    tab-size: 2;
+  }
+  code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+
+  /* syntax highlight */
+  .key    { color: var(--key); }
+  .string { color: var(--str); }
+  .number { color: var(--num); }
+  .boolean{ color: var(--bool); }
+  .null   { color: var(--null); }
+  .punct  { color: var(--muted); }
+
+  /* tree */
+  #tree { padding: 6px 10px 14px 10px; overflow: auto; }
+  .tree-root { padding: 4px 2px; }
+  details.tree, .pair { padding: 2px 4px; border-radius: 6px; }
+  details.tree[open] { background: color-mix(in oklab, var(--subtle) 60%, transparent); }
+  details.tree > summary {
+    list-style: none; cursor: pointer; user-select: none; outline: none;
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 6px; border-radius: 6px; position: sticky; top: 0;
+    background: linear-gradient(180deg, color-mix(in oklab, var(--panel) 60%, transparent), transparent);
+  }
+  details.tree > summary::-webkit-details-marker { display: none; }
+  .caret {
+    width: 10px; height: 10px; margin-right: 4px; flex: 0 0 auto;
+    transform: rotate(-90deg); transition: transform .15s ease;
+    border-right: 2px solid var(--muted); border-bottom: 2px solid var(--muted);
+  }
+  details[open] > summary .caret { transform: rotate(0deg); }
+  .summary-key { color: var(--key); }
+  .summary-type { color: var(--muted); font-size: 12px; }
+  .children { margin-left: 18px; border-left: 1px dashed var(--border); padding-left: 10px; }
+  .pair {
+    display: flex; align-items: baseline; gap: 6px; margin: 2px 0; padding: 4px 6px;
+  }
+  .pair:hover { background: color-mix(in oklab, var(--subtle) 65%, transparent); }
+  .kv { color: var(--muted); margin: 0 4px; }
+
+  /* buttons, inputs */
+  .btn, .tab, .chip {
+    --pad-x: 10px; --pad-y: 8px;
+    border: 1px solid var(--border);
+    padding: var(--pad-y) var(--pad-x); border-radius: 8px;
+    background: var(--btn-bg); color: var(--text); font-size: 13px;
+    display: inline-flex; align-items: center; gap: 8px;
+    cursor: pointer; user-select: none;
+  }
+  .btn:hover, .tab:hover { background: var(--btn-bg-hover); }
+  .btn.primary { background: color-mix(in oklab, var(--accent) 12%, var(--btn-bg)); border-color: color-mix(in oklab, var(--accent) 50%, var(--border)); }
+  .btn.primary:hover { background: color-mix(in oklab, var(--accent) 20%, var(--btn-bg)); }
+  .btn:active { transform: translateY(1px); }
+  .btn .small { font-size: 12px; color: var(--muted); }
+  .tab {
+    background: transparent; border-radius: 999px; padding: 6px 12px; border-color: transparent; color: var(--muted);
+  }
+  .tab.active { color: var(--text); background: var(--subtle); border-color: var(--border); }
+  .seg {
+    display: inline-flex; background: color-mix(in oklab, var(--panel) 95%, transparent); border: 1px solid var(--border); border-radius: 999px; padding: 2px;
+  }
+
+  select, input[type="number"] {
+    appearance: none; background: var(--btn-bg); color: var(--text);
+    border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 13px;
+  }
+  .spacer { flex: 1 1 auto; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+  .muted { color: var(--muted); }
+  .hidden { display: none !important; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: color-mix(in oklab, var(--subtle) 65%, transparent);
+    border: 1px solid var(--border); color: var(--muted);
+    padding: 6px 10px; border-radius: 999px; font-size: 12px;
+  }
+  .kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    background: var(--subtle); border: 1px solid var(--border);
+    padding: 2px 6px; border-radius: 6px; font-size: 12px; color: var(--text);
+  }
+  .right .group { display: inline-flex; gap: 6px; align-items: center; }
+  .right .group + .group { margin-left: 6px; }
+
+  footer {
+    max-width: 1200px; margin: 6px auto 24px auto; padding: 0 16px; color: var(--muted); font-size: 12px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="topbar">
+    <div class="brand">
+      <div class="logo" aria-hidden="true"></div>
+      <div class="title">JSON Formatter • Validator • Tree Viewer</div>
+    </div>
+    <div class="status" id="status">
+      <div class="dot"></div>
+      <div class="text" id="statusText">Waiting for JSON…</div>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="panel" id="inputPanel">
+    <div class="toolbar">
+      <div class="left">
+        <span class="label">JSON input</span>
+        <span class="pill">Drop a file here</span>
+      </div>
+      <div class="right">
+        <div class="group">
+          <label class="muted" for="indent">Indent</label>
+          <select id="indent" title="Indent size">
+            <option value="2">2</option>
+            <option value="4">4</option>
+            <option value="\t">Tab</option>
+          </select>
+        </div>
+        <div class="group">
+          <button class="btn primary" id="formatBtn" title="Format (beautify) JSON"><span>Format</span></button>
+          <button class="btn" id="minifyBtn" title="Minify JSON"><span>Minify</span></button>
+          <button class="btn" id="sampleBtn" title="Insert sample JSON"><span>Sample</span></button>
+          <button class="btn" id="clearBtn" title="Clear input"><span>Clear</span></button>
+        </div>
+      </div>
+    </div>
+    <textarea id="input" spellcheck="false" placeholder='Paste JSON here…'></textarea>
+    <div class="errorbox hidden" id="errorBox"><pre id="errorPre"></pre></div>
+  </section>
+
+  <section class="panel">
+    <div class="toolbar">
+      <div class="left">
+        <span class="label">Output</span>
+        <span class="seg" role="tablist" aria-label="Views">
+          <button class="tab active" role="tab" id="tabTree" aria-selected="true">Tree</button>
+          <button class="tab" role="tab" id="tabRaw" aria-selected="false">Raw</button>
+        </span>
+      </div>
+      <div class="right">
+        <div class="group" id="treeControls">
+          <button class="btn" id="expandAll" title="Expand all"><span>Expand all</span></button>
+          <button class="btn" id="collapseAll" title="Collapse all"><span>Collapse all</span></button>
+        </div>
+        <div class="group">
+          <button class="btn" id="copyBtn" title="Copy formatted JSON"><span>Copy</span></button>
+          <button class="btn" id="downloadBtn" title="Download JSON"><span>Download</span></button>
+          <button class="btn" id="themeBtn" title="Toggle theme"><span id="themeLabel">Dark</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="views">
+      <div class="view active" id="treeView">
+        <div id="tree" class="tree-root" aria-live="polite" aria-busy="false"></div>
+      </div>
+      <pre class="view" id="rawView"><code id="rawCode" class="mono"></code></pre>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div>
+    Shortcuts: <span class="kbd">Ctrl/Cmd + Enter</span> format, <span class="kbd">Ctrl/Cmd + S</span> download
+  </div>
+  <div class="muted">No data leaves your browser • 100% client-side</div>
+</footer>
+
+<script>
+(function () {
+  'use strict';
+
+  const $ = (sel, el = document) => el.querySelector(sel);
+  const $$ = (sel, el = document) => Array.from(el.querySelectorAll(sel));
+
+  const input = $('#input');
+  const inputPanel = $('#inputPanel');
+  const indentSelect = $('#indent');
+  const errorBox = $('#errorBox');
+  const errorPre = $('#errorPre');
+
+  const status = $('#status');
+  const statusText = $('#statusText');
+
+  const tabTree = $('#tabTree');
+  const tabRaw = $('#tabRaw');
+  const treeView = $('#treeView');
+  const rawView = $('#rawView');
+  const rawCode = $('#rawCode');
+  const treeContainer = $('#tree');
+
+  const expandAllBtn = $('#expandAll');
+  const collapseAllBtn = $('#collapseAll');
+  const copyBtn = $('#copyBtn');
+  const downloadBtn = $('#downloadBtn');
+  const themeBtn = $('#themeBtn');
+  const formatBtn = $('#formatBtn');
+  const minifyBtn = $('#minifyBtn');
+  const sampleBtn = $('#sampleBtn');
+  const clearBtn = $('#clearBtn');
+
+  const treeControls = $('#treeControls');
+
+  let lastParsed = null;
+  let lastPretty = '';
+  let debounceTimer = 0;
+
+  // Theme handling
+  const themeKey = 'jsonfmt-theme';
+  const savedTheme = localStorage.getItem(themeKey);
+  if (savedTheme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  updateThemeLabel();
+
+  themeBtn.addEventListener('click', () => {
+    const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    const next = cur === 'light' ? 'dark' : 'light';
+    if (next === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    else document.documentElement.removeAttribute('data-theme');
+    localStorage.setItem(themeKey, next);
+    updateThemeLabel();
+  });
+
+  function updateThemeLabel() {
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    $('#themeLabel').textContent = isLight ? 'Light' : 'Dark';
+  }
+
+  // Persistence
+  const storageKey = 'jsonfmt-input';
+  const storageIndentKey = 'jsonfmt-indent';
+  const savedIndent = localStorage.getItem(storageIndentKey);
+  if (savedIndent) indentSelect.value = savedIndent;
+  const savedInput = localStorage.getItem(storageKey);
+  if (savedInput) input.value = savedInput;
+
+  indentSelect.addEventListener('change', () => {
+    localStorage.setItem(storageIndentKey, indentSelect.value);
+  });
+
+  // Tabs
+  tabTree.addEventListener('click', () => setTab('tree'));
+  tabRaw.addEventListener('click', () => setTab('raw'));
+  function setTab(which) {
+    const isTree = which === 'tree';
+    tabTree.classList.toggle('active', isTree);
+    tabRaw.classList.toggle('active', !isTree);
+    tabTree.setAttribute('aria-selected', String(isTree));
+    tabRaw.setAttribute('aria-selected', String(!isTree));
+    treeView.classList.toggle('active', isTree);
+    rawView.classList.toggle('active', !isTree);
+    treeControls.style.display = isTree ? 'inline-flex' : 'none';
+  }
+  setTab('tree');
+
+  // Buttons
+  formatBtn.addEventListener('click', () => {
+    try {
+      const obj = JSON.parse(input.value);
+      const ind = getIndent();
+      const pretty = JSON.stringify(obj, null, ind);
+      input.value = pretty;
+      localStorage.setItem(storageKey, input.value);
+      parseAndRender();
+    } catch (e) {
+      showError(e, input.value);
+    }
+  });
+
+  minifyBtn.addEventListener('click', () => {
+    try {
+      const obj = JSON.parse(input.value);
+      const min = JSON.stringify(obj);
+      input.value = min;
+      localStorage.setItem(storageKey, input.value);
+      parseAndRender();
+    } catch (e) {
+      showError(e, input.value);
+    }
+  });
+
+  sampleBtn.addEventListener('click', () => {
+    const sample = {
+      name: "Sample JSON",
+      version: 1,
+      active: true,
+      tags: ["formatter", "validator", "tree", "syntax-highlighting"],
+      meta: {
+        author: "You",
+        created: new Date().toISOString(),
+        website: null
+      },
+      items: [
+        { id: 1, price: 9.99, colors: ["red", "green", "blue"] },
+        { id: 2, price: 12.5, colors: [] }
+      ]
+    };
+    input.value = JSON.stringify(sample, null, getIndent());
+    localStorage.setItem(storageKey, input.value);
+    parseAndRender();
+    input.focus();
+  });
+
+  clearBtn.addEventListener('click', () => {
+    input.value = '';
+    localStorage.removeItem(storageKey);
+    lastParsed = null;
+    lastPretty = '';
+    treeContainer.innerHTML = '';
+    rawCode.innerHTML = '';
+    setStatus('Waiting for JSON…', 'idle');
+    toggleError(false);
+  });
+
+  expandAllBtn.addEventListener('click', () => $$('details.tree', treeContainer).forEach(d => d.open = true));
+  collapseAllBtn.addEventListener('click', () => $$('details.tree', treeContainer).forEach(d => d.open = false));
+
+  copyBtn.addEventListener('click', async () => {
+    const text = lastPretty || tryPretty(input.value) || input.value;
+    try {
+      await navigator.clipboard.writeText(text);
+      pulse(copyBtn);
+    } catch {
+      // fallback
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta);
+      pulse(copyBtn);
+    }
+  });
+
+  downloadBtn.addEventListener('click', () => {
+    const text = lastPretty || tryPretty(input.value) || input.value;
+    const blob = new Blob([text], { type: 'application/json;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'data.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 0);
+  });
+
+  function pulse(el) {
+    const original = el.style.boxShadow;
+    el.style.boxShadow = '0 0 0 3px var(--focus)';
+    setTimeout(() => { el.style.boxShadow = original; }, 200);
+  }
+
+  // Input handling
+  input.addEventListener('input', () => {
+    localStorage.setItem(storageKey, input.value);
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(parseAndRender, 250);
+  });
+
+  input.addEventListener('keydown', (e) => {
+    // Ctrl/Cmd + Enter = format
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      formatBtn.click();
+    }
+    // Ctrl/Cmd + S = download
+    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 's')) {
+      e.preventDefault();
+      downloadBtn.click();
+    }
+  });
+
+  // Drag & drop
+  ['dragenter','dragover'].forEach(ev => inputPanel.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    inputPanel.style.outline = '2px dashed var(--accent)';
+  }));
+  ['dragleave','drop'].forEach(ev => inputPanel.addEventListener(ev, (e) => {
+    e.preventDefault(); e.stopPropagation();
+    inputPanel.style.outline = 'none';
+  }));
+  inputPanel.addEventListener('drop', async (e) => {
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      input.value = text;
+      localStorage.setItem(storageKey, input.value);
+      parseAndRender();
+    } catch {}
+  });
+
+  // Core
+  function getIndent() {
+    const v = indentSelect.value;
+    return v === '\\t' ? '\t' : (isNaN(+v) ? 2 : +v);
+  }
+
+  function tryPretty(text) {
+    try { return JSON.stringify(JSON.parse(text), null, getIndent()); }
+    catch { return ''; }
+  }
+
+  function parseAndRender() {
+    const text = input.value;
+    if (!text.trim()) {
+      toggleError(false);
+      setStatus('Waiting for JSON…', 'idle');
+      treeContainer.innerHTML = '';
+      rawCode.innerHTML = '';
+      lastParsed = null;
+      lastPretty = '';
+      return;
+    }
+    try {
+      const obj = JSON.parse(text);
+      lastParsed = obj;
+      lastPretty = JSON.stringify(obj, null, getIndent());
+      toggleError(false);
+      setStatus('Valid JSON', 'valid');
+      renderRaw(lastPretty);
+      renderTree(obj);
+    } catch (e) {
+      lastParsed = null;
+      lastPretty = '';
+      renderRaw('');
+      treeContainer.innerHTML = '';
+      showError(e, text);
+      setStatus('Invalid JSON', 'invalid');
+    }
+  }
+
+  function setStatus(msg, state) {
+    statusText.textContent = msg;
+    status.classList.remove('valid', 'invalid');
+    if (state === 'valid') status.classList.add('valid');
+    else if (state === 'invalid') status.classList.add('invalid');
+  }
+
+  function toggleError(show) {
+    errorBox.classList.toggle('hidden', !show);
+    inputPanel.classList.toggle('error', show);
+  }
+
+  function showError(error, source) {
+    const { message, pos, line, col, context } = analyzeSyntaxError(error, source);
+    toggleError(true);
+    const loc = (line && col) ? ` at line ${line}, column ${col}` : '';
+    errorPre.innerHTML = `<span class="loc">Syntax error${loc}:</span> ${escapeHtml(message)}\n` + (context ? `\n${context}` : '');
+  }
+
+  function analyzeSyntaxError(err, src) {
+    const message = String(err && err.message || 'Invalid JSON');
+    const m = message.match(/position (\d+)/i) || message.match(/at line (\d+) column (\d+)/i);
+    let pos = null, line = null, col = null, context = '';
+    if (m && m[1] && m[0].toLowerCase().includes('position')) {
+      pos = +m[1];
+      const lc = indexToLineCol(src, pos);
+      line = lc.line; col = lc.col;
+    } else if (m && m[1] && m[2]) {
+      line = +m[1]; col = +m[2];
+      pos = lineColToIndex(src, line, col);
+    }
+    if (line != null && col != null) {
+      const lines = src.split(/\r?\n/);
+      const l = Math.max(1, Math.min(lines.length, line));
+      const before = lines[l-1];
+      const marker = ' '.repeat(Math.max(0, col-1)) + '^';
+      const showBefore = lines[l-2] ? (l-1).toString().padStart(4, ' ') + ' | ' + lines[l-2] + '\n' : '';
+      const showLine   = (l).toString().padStart(4, ' ') + ' | ' + before + '\n';
+      const showMarker = '     ' + ' '.repeat(Math.max(0, (String(l).length))) + ' ' + marker;
+      context = showBefore + showLine + showMarker;
+    }
+    return { message, pos, line, col, context };
+  }
+
+  function indexToLineCol(str, index) {
+    let line = 1, col = 1;
+    for (let i = 0; i < index && i < str.length; i++) {
+      const ch = str.charAt(i);
+      if (ch === '\n') { line++; col = 1; }
+      else { col++; }
+    }
+    return { line, col };
+  }
+  function lineColToIndex(str, line, col) {
+    const lines = str.split(/\r?\n/);
+    let idx = 0;
+    for (let i = 0; i < line - 1 && i < lines.length; i++) idx += lines[i].length + 1;
+    idx += Math.max(0, col - 1);
+    return idx;
+  }
+
+  function renderRaw(pretty) {
+    rawCode.innerHTML = pretty ? syntaxHighlight(pretty) : '';
+  }
+
+  function renderTree(value) {
+    treeContainer.innerHTML = '';
+    treeContainer.setAttribute('aria-busy', 'true');
+    const root = buildNode(null, value, true);
+    treeContainer.appendChild(root);
+    treeContainer.setAttribute('aria-busy', 'false');
+  }
+
+  // Syntax highlighting borrowed and adapted from classic JSON highlight regex
+  function syntaxHighlight(json) {
+    const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const escaped = esc(json);
+    return escaped.replace(/("(\\u[0-9a-fA-F]{4}|\\[^u]|[^\\"])*"(\s*:)?|\btrue\b|\bfalse\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?)/g, (match) => {
+      let cls = 'number';
+      if (match[0] === '"') {
+        cls = /:\s*$/.test(match) ? 'key' : 'string';
+      } else if (/true|false/.test(match)) {
+        cls = 'boolean';
+      } else if (/null/.test(match)) {
+        cls = 'null';
+      } else {
+        cls = 'number';
+      }
+      return `<span class="${cls}">${match}</span>`;
+    });
+  }
+
+  // Tree building
+  function buildNode(key, value, isRoot = false) {
+    const t = typeOf(value);
+    if (t === 'object') {
+      const keys = Object.keys(value);
+      const det = document.createElement('details');
+      det.className = 'tree'; det.open = isRoot; // open root
+      const sum = document.createElement('summary');
+      sum.innerHTML = `
+        <span class="caret" aria-hidden="true"></span>
+        ${key != null ? `<span class="summary-key">"${escapeHtml(key)}"</span><span class="kv">:</span>` : ''}
+        <span class="summary-type">{ Object } <span class="muted">(${keys.length} ${keys.length===1?'key':'keys'})</span></span>
+      `;
+      det.appendChild(sum);
+      const children = document.createElement('div');
+      children.className = 'children';
+      for (const k of keys) {
+        children.appendChild(buildNode(k, value[k], false));
+      }
+      det.appendChild(children);
+      return det;
+    } else if (t === 'array') {
+      const det = document.createElement('details');
+      det.className = 'tree'; det.open = isRoot;
+      const sum = document.createElement('summary');
+      sum.innerHTML = `
+        <span class="caret" aria-hidden="true"></span>
+        ${key != null ? `<span class="summary-key">"${escapeHtml(key)}"</span><span class="kv">:</span>` : ''}
+        <span class="summary-type">[ Array ] <span class="muted">(${value.length} ${value.length===1?'item':'items'})</span></span>
+      `;
+      det.appendChild(sum);
+      const children = document.createElement('div');
+      children.className = 'children';
+      for (let i = 0; i < value.length; i++) {
+        children.appendChild(buildNode(String(i), value[i], false));
+      }
+      det.appendChild(children);
+      return det;
+    } else {
+      const div = document.createElement('div');
+      div.className = 'pair';
+      if (key != null) {
+        const kspan = document.createElement('span');
+        kspan.className = 'key';
+        kspan.textContent = `"${key}"`;
+        div.appendChild(kspan);
+        const colon = document.createElement('span');
+        colon.className = 'kv punct';
+        colon.textContent = ':';
+        div.appendChild(colon);
+      }
+      const vspan = document.createElement('span');
+      const { cls, text } = formatPrimitive(value, t);
+      vspan.className = cls;
+      vspan.textContent = text;
+      div.appendChild(vspan);
+      return div;
+    }
+  }
+
+  function typeOf(v) {
+    if (v === null) return 'null';
+    if (Array.isArray(v)) return 'array';
+    return typeof v;
+  }
+
+  function formatPrimitive(v, t) {
+    switch (t) {
+      case 'string': return { cls: 'string', text: `"${v}"` };
+      case 'number': return { cls: 'number', text: String(v) };
+      case 'boolean': return { cls: 'boolean', text: v ? 'true' : 'false' };
+      case 'null': return { cls: 'null', text: 'null' };
+      default: return { cls: '', text: String(v) };
+    }
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+  }
+
+  // Initial render if persisted data exists
+  parseAndRender();
+
+})();
+</script>
+</body>
+</html>
