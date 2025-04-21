@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CSV Viewer — Drag & Drop, Sort, Filter, Export JSON</title>
+<style>
+  :root{
+    --bg: #ffffff;
+    --fg: #11151a;
+    --muted: #6a7380;
+    --accent: #3b82f6;
+    --border: #e5e7eb;
+    --bg-soft: #f8fafc;
+    --bg-hover: #eef2f7;
+    --warn: #b45309;
+    --ok: #16a34a;
+    --err: #dc2626;
+    --shadow: 0 1px 2px rgba(0,0,0,.05), 0 2px 10px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg: #0f141a;
+      --fg: #e6edf3;
+      --muted: #93a1ad;
+      --accent: #60a5fa;
+      --border: #283341;
+      --bg-soft: #0b1015;
+      --bg-hover: #151c24;
+      --shadow: none;
+    }
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, "Helvetica Neue", Arial, "Apple Color Emoji","Segoe UI Emoji";
+  }
+  .app {
+    display: grid;
+    grid-template-rows: auto auto 1fr auto;
+    min-height: 100svh;
+  }
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+  }
+  header .bar {
+    display:flex; gap:.5rem; align-items:center; padding:.75rem 1rem; flex-wrap: wrap;
+  }
+  header .bar h1 {
+    font-size: 1rem; margin:0; font-weight: 600; color: var(--muted);
+  }
+  .controls {
+    display:flex; gap:.5rem; align-items:center; flex-wrap: wrap;
+  }
+  .controls > * { margin-right:.25rem; }
+  .btn {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--bg-soft);
+    color: var(--fg);
+    padding: .5rem .75rem;
+    border-radius: .5rem;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+  }
+  .btn:hover { background: var(--bg-hover); }
+  .btn.primary { border-color: transparent; background: var(--accent); color: white; }
+  .btn.danger { border-color: var(--err); color: white; background: var(--err); }
+  .btn:disabled { opacity:.6; cursor:not-allowed; }
+  .inline {
+    display:flex; gap:.5rem; align-items:center; flex-wrap:wrap;
+  }
+  .pill {
+    padding:.3rem .55rem; border:1px solid var(--border); border-radius: 999px; background: var(--bg-soft); color: var(--muted); font-size:.85rem;
+  }
+  .file-input {
+    display:inline-flex; align-items:center; gap:.5rem; border:1px dashed var(--border); padding:.45rem .6rem; border-radius:.5rem;
+    background: var(--bg-soft);
+  }
+  input[type="file"] { display:none; }
+  label[for="file"] { cursor:pointer; color: var(--accent); font-weight:600; }
+  .dropzone {
+    margin: .75rem 1rem 0;
+    border: 2px dashed var(--border);
+    border-radius: .75rem;
+    padding: 1rem;
+    text-align: center;
+    color: var(--muted);
+    background: var(--bg-soft);
+    transition: all .15s ease;
+  }
+  .dropzone.dragover {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in oklab, var(--accent) 10%, var(--bg));
+  }
+  .options {
+    display:flex; gap:1rem; align-items:center; padding: .5rem 1rem .75rem; border-bottom: 1px solid var(--border);
+    color: var(--muted);
+    flex-wrap: wrap;
+  }
+  .options label { display:inline-flex; align-items:center; gap:.4rem; }
+  .options input[type="checkbox"] { transform: translateY(1px); }
+  .status {
+    margin-left: auto;
+  }
+  .main {
+    display:flex; flex-direction: column; min-height: 0;
+    padding: .5rem 1rem 1rem;
+    gap: .5rem;
+  }
+  .table-wrap {
+    position: relative;
+    border: 1px solid var(--border);
+    border-radius: .5rem;
+    overflow: hidden;
+    background: var(--bg-soft);
+    min-height: 240px;
+  }
+  .scroll {
+    overflow: auto;
+    max-height: calc(100vh - 240px);
+    background: var(--bg);
+  }
+  table {
+    border-collapse: separate;
+    width: 100%;
+    table-layout: fixed;
+    border-spacing: 0;
+    font-size: 13px;
+  }
+  thead th, thead td {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg);
+  }
+  thead .filters th, thead .filters td {
+    top: 34px;
+    z-index: 1;
+    background: var(--bg);
+  }
+  th, td {
+    border-bottom: 1px solid var(--border);
+    padding: .5rem .5rem;
+    vertical-align: top;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  tbody tr:nth-child(even) { background: color-mix(in oklab, var(--bg) 96%, var(--fg)); }
+  tbody tr:hover { background: var(--bg-hover); }
+  th {
+    text-align: left;
+    font-weight: 600;
+    color: var(--muted);
+    user-select: none;
+  }
+  th .head {
+    display:flex; align-items:center; gap:.35rem; cursor: pointer;
+  }
+  th .sort {
+    visibility: hidden;
+    font-size: .9em;
+  }
+  th.sorted .sort { visibility: visible; color: var(--accent); }
+  thead input.filter-input {
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--border);
+    background: var(--bg-soft);
+    color: var(--fg);
+    border-radius: .35rem;
+    padding: .3rem .4rem;
+    font-size: .9em;
+    outline: none;
+  }
+  thead input.filter-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent) 25%, transparent); }
+  .footer {
+    display:flex; gap:.75rem; align-items:center; padding: .5rem 1rem; border-top: 1px solid var(--border); color: var(--muted);
+  }
+  .spacer { flex: 1; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  .help {
+    color: var(--muted); font-size: .9em;
+  }
+  .counter { color: var(--muted); }
+  .hidden { display:none !important; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="bar">
+      <h1>CSV Viewer</h1>
+      <div class="controls">
+        <span class="file-input">
+          <input type="file" id="file" accept=".csv,text/csv,.tsv,text/tab-separated-values,text/plain" />
+          <label for="file">Choose CSV</label>
+          <span class="muted" id="filename"></span>
+        </span>
+        <button class="btn" id="btn-sample" title="Load a small sample">Load sample</button>
+        <button class="btn" id="btn-clear" disabled>Clear</button>
+        <button class="btn primary" id="btn-download" disabled>Download JSON</button>
+        <button class="btn" id="btn-copy" disabled>Copy JSON</button>
+      </div>
+      <span class="pill" id="dims">—</span>
+    </div>
+    <div class="dropzone" id="dropzone">
+      Drag & drop a .csv/.tsv file here, or paste CSV text
+    </div>
+    <div class="options">
+      <label><input type="checkbox" id="has-header" checked /> First row is header</label>
+      <label><input type="checkbox" id="auto-detect" checked /> Auto-detect delimiter</label>
+      <label>Delimiter:
+        <select id="delimiter" style="padding:.2rem .35rem; border:1px solid var(--border); background:var(--bg-soft); color:var(--fg); border-radius:.35rem;">
+          <option value=",">Comma ,</option>
+          <option value=";">Semicolon ;</option>
+          <option value="\t">Tab ⟶</option>
+          <option value="|">Pipe |</option>
+        </select>
+      </label>
+      <span class="status" id="status">Ready</span>
+    </div>
+  </header>
+
+  <div class="main">
+    <div class="table-wrap">
+      <div class="scroll" id="scroll">
+        <table id="table" class="hidden" aria-live="polite">
+          <thead id="thead"></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="help">
+      Filter tips: type text to match substrings. For numeric columns, you can use >, >=, <, <=, =, != and ranges like 10..20
+    </div>
+  </div>
+
+  <div class="footer">
+    <span id="summary" class="counter">No data loaded</span>
+    <span class="spacer"></span>
+    <span id="progress" class="counter"></span>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // State
+  const state = {
+    delimiter: ',',
+    hasHeader: true,
+    headers: [],
+    rows: [],           // array of arrays
+    types: [],          // inferred types per column: 'number' | 'string'
+    filters: [],        // string per column
+    sortCol: -1,
+    sortDir: 1,         // 1 asc, -1 desc
+    filteredIdx: [],    // indices of rows that pass filters
+    rendered: 0,        // how many filtered rows are rendered
+    chunk: 250,         // rows per render chunk
+    renderLock: false,
+    collator: new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' }),
+  };
+
+  // Elements
+  const elFile = document.getElementById('file');
+  const elDrop = document.getElementById('dropzone');
+  const elHasHeader = document.getElementById('has-header');
+  const elAutoDetect = document.getElementById('auto-detect');
+  const elDelimiter = document.getElementById('delimiter');
+  const elStatus = document.getElementById('status');
+  const elDims = document.getElementById('dims');
+  const elTable = document.getElementById('table');
+  const elThead = document.getElementById('thead');
+  const elTbody = document.getElementById('tbody');
+  const elScroll = document.getElementById('scroll');
+  const elBtnClear = document.getElementById('btn-clear');
+  const elBtnSample = document.getElementById('btn-sample');
+  const elBtnDownload = document.getElementById('btn-download');
+  const elBtnCopy = document.getElementById('btn-copy');
+  const elSummary = document.getElementById('summary');
+  const elProgress = document.getElementById('progress');
+  const elFilename = document.getElementById('filename');
+
+  // Utils
+  const setStatus = (msg) => elStatus.textContent = msg;
+  const setSummary = (msg) => elSummary.textContent = msg;
+  const human = (n) => n.toLocaleString();
+
+  function debounce(fn, ms=200){
+    let t; return (...args)=>{ clearTimeout(t); t=setTimeout(()=>fn(...args), ms); };
+  }
+
+  function detectDelimiterByParse(sampleText) {
+    const candidates = [',',';','\t','|'];
+    const linesToTry = 30;
+    const sample = sampleText.split(/\r?\n/).slice(0, linesToTry).join('\n');
+    let best = { delim: ',', score: -1, cols: 0 };
+
+    for (const d of candidates) {
+      const rows = parseCSV(sample, d);
+      // score by (mode column count across rows) * number of rows that have that count
+      const counts = new Map();
+      for (const r of rows) {
+        const c = r.length;
+        counts.set(c, (counts.get(c)||0)+1);
+      }
+      let modeCols=0, modeCount=0;
+      for (const [cols, count] of counts.entries()) {
+        if (count > modeCount || (count===modeCount && cols > modeCols)) {
+          modeCount = count; modeCols = cols;
+        }
+      }
+      const score = modeCols > 1 ? modeCount * modeCols : -1; // ignore single-col
+      if (score > best.score) best = { delim: d, score, cols: modeCols };
+    }
+    return best.delim;
+  }
+
+  // Robust CSV parser (handles quotes, escaped quotes, CRLF, delimiter)
+  function parseCSV(text, delimiter = ',') {
+    const out = [];
+    let field = '';
+    let row = [];
+    let i = 0;
+    const N = text.length;
+    let inQuotes = false;
+
+    while (i < N) {
+      const ch = text[i];
+
+      if (ch === '"') {
+        if (inQuotes) {
+          // Lookahead for escaped quote
+          if (i+1 < N && text[i+1] === '"') {
+            field += '"';
+            i += 2;
+            continue;
+          } else {
+            inQuotes = false;
+            i++;
+            continue;
+          }
+        } else {
+          // start quote (even if field already has data; RFC allows)
+          inQuotes = true;
+          i++;
+          continue;
+        }
+      }
+
+      if (!inQuotes && (ch === delimiter)) {
+        row.push(field);
+        field = '';
+        i++;
+        continue;
+      }
+
+      if (!inQuotes && (ch === '\n' || ch === '\r')) {
+        // handle CRLF
+        if (ch === '\r' && i+1 < N && text[i+1] === '\n') i++;
+        row.push(field);
+        out.push(row);
+        field = '';
+        row = [];
+        i++;
+        continue;
+      }
+
+      field += ch;
+      i++;
+    }
+
+    // flush last field/row
+    row.push(field);
+    // Avoid pushing trailing empty row if file ends with newline
+    if (!(row.length === 1 && row[0] === '' && out.length > 0)) {
+      out.push(row);
+    }
+
+    return out;
+  }
+
+  function inferTypes(rows, headers) {
+    const cols = headers.length;
+    const types = Array(cols).fill('string');
+    const sample = Math.min(rows.length, 1000);
+    for (let c=0; c<cols; c++) {
+      let numericCount = 0, nonEmpty=0;
+      for (let r=0; r<sample; r++) {
+        const v = rows[r][c];
+        if (v !== '' && v != null) {
+          nonEmpty++;
+          const n = Number(v.replace(/[\s,]+/g,''));
+          if (!Number.isNaN(n) && Number.isFinite(n)) numericCount++;
+        }
+      }
+      if (nonEmpty > 0 && numericCount / nonEmpty >= 0.85) types[c] = 'number';
+    }
+    return types;
+  }
+
+  function buildHeaders(firstRow, cols) {
+    const raw = firstRow.slice();
+    const headers = raw.map((h, i) => (h && h.trim()) ? h.trim() : `Column ${i+1}`);
+    // Deduplicate
+    const seen = new Map();
+    return headers.map(h => {
+      const k = h;
+      if (!seen.has(k)) { seen.set(k, 1); return h; }
+      const n = seen.get(k) + 1;
+      seen.set(k, n);
+      return `${h} (${n})`;
+    });
+  }
+
+  function applyFiltersAndSort() {
+    const { rows, filters, sortCol, sortDir, types } = state;
+    const cols = state.headers.length;
+    const tests = filters.map((f, i) => buildFilterFn(f, types[i]));
+    const idx = [];
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      let ok = true;
+      for (let c = 0; c < cols; c++) {
+        if (tests[c] && !tests[c](row[c])) { ok = false; break; }
+      }
+      if (ok) idx.push(r);
+    }
+    // Sort if needed
+    if (sortCol >= 0) {
+      const t = types[sortCol];
+      if (t === 'number') {
+        idx.sort((a, b) => {
+          const av = numify(rows[a][sortCol]);
+          const bv = numify(rows[b][sortCol]);
+          const na = (av == null || Number.isNaN(av)) ? -Infinity : av;
+          const nb = (bv == null || Number.isNaN(bv)) ? -Infinity : bv;
+          return (na - nb) * sortDir || (a - b);
+        });
+      } else {
+        const coll = state.collator;
+        idx.sort((a, b) => {
+          const av = (rows[a][sortCol] ?? '').toString();
+          const bv = (rows[b][sortCol] ?? '').toString();
+          const d = coll.compare(av, bv);
+          return (d || (a - b)) * sortDir;
+        });
+      }
+    }
+    state.filteredIdx = idx;
+    state.rendered = 0;
+    updateSummary();
+    clearTbody();
+    requestIdleCallbackPoly(renderMore);
+  }
+
+  function numify(v) {
+    if (v == null || v === '') return NaN;
+    const s = String(v).replace(/[\s,]+/g,'');
+    const n = Number(s);
+    return Number.isFinite(n) ? n : NaN;
+  }
+
+  function buildFilterFn(input, type) {
+    if (!input) return null;
+    const s = input.trim();
+    if (!s) return null;
+
+    // Numeric ops
+    if (type === 'number') {
+      // range: a..b
+      const mRange = s.match(/^\s*(-?\d+(?:\.\d+)?)\s*\.\.\s*(-?\d+(?:\.\d+)?)\s*$/);
+      if (mRange) {
+        const lo = parseFloat(mRange[1]);
+        const hi = parseFloat(mRange[2]);
+        return (val) => {
+          const n = numify(val);
+          return !Number.isNaN(n) && n >= lo && n <= hi;
+        };
+      }
+      const mCmp = s.match(/^\s*([<>]=?|[=!]=|=)\s*(-?\d+(?:\.\d+)?)\s*$/);
+      if (mCmp) {
+        const op = mCmp[1];
+        const num = parseFloat(mCmp[2]);
+        return (val) => {
+          const n = numify(val);
+          if (Number.isNaN(n)) return false;
+          switch(op){
+            case '>': return n > num;
+            case '>=': return n >= num;
+            case '<': return n < num;
+            case '<=': return n <= num;
+            case '=': return n === num;
+            case '!=': return n !== num;
+            default: return false;
+          }
+        };
+      }
+    }
+
+    // Simple substring, case-insensitive
+    const needle = s.toLowerCase();
+    return (val) => String(val ?? '').toLowerCase().includes(needle);
+  }
+
+  function clearTbody() {
+    while (elTbody.firstChild) elTbody.removeChild(elTbody.firstChild);
+  }
+
+  function renderTable() {
+    elTable.classList.remove('hidden');
+    elThead.innerHTML = '';
+    clearTbody();
+
+    const colCount = state.headers.length;
+    const trHead = document.createElement('tr');
+    state.headers.forEach((h, i) => {
+      const th = document.createElement('th');
+      const head = document.createElement('div');
+      head.className = 'head';
+      const title = document.createElement('span');
+      title.textContent = h;
+      const sort = document.createElement('span');
+      sort.className = 'sort';
+      sort.textContent = '↕';
+      head.appendChild(title);
+      head.appendChild(sort);
+      th.appendChild(head);
+      th.title = 'Click to sort';
+      th.style.width = `${Math.max(100, 800/colCount)}px`;
+      th.addEventListener('click', () => onSort(i, th));
+      trHead.appendChild(th);
+    });
+
+    const trFilters = document.createElement('tr');
+    trFilters.className = 'filters';
+    state.filters = Array(colCount).fill('');
+    for (let i=0;i<colCount;i++){
+      const td = document.createElement('td');
+      const input = document.createElement('input');
+      input.className = 'filter-input';
+      input.placeholder = 'Filter...';
+      input.addEventListener('input', debounce((e) => {
+        state.filters[i] = e.target.value;
+        applyFiltersAndSort();
+      }, 200));
+      td.appendChild(input);
+      trFilters.appendChild(td);
+    }
+
+    elThead.appendChild(trHead);
+    elThead.appendChild(trFilters);
+
+    // init sort indicator if any
+    updateSortIndicators();
+    applyFiltersAndSort();
+  }
+
+  function onSort(col, thEl) {
+    if (state.sortCol === col) {
+      state.sortDir = -state.sortDir;
+    } else {
+      state.sortCol = col;
+      state.sortDir = 1;
+    }
+    updateSortIndicators();
+    applyFiltersAndSort();
+  }
+
+  function updateSortIndicators() {
+    // Clear all
+    const ths = elThead.querySelectorAll('th');
+    ths.forEach((th, idx) => {
+      th.classList.toggle('sorted', idx === state.sortCol);
+      const s = th.querySelector('.sort');
+      if (!s) return;
+      if (idx !== state.sortCol) { s.textContent = '↕'; return; }
+      s.textContent = state.sortDir > 0 ? '▲' : '▼';
+    });
+  }
+
+  function renderMore() {
+    if (state.renderLock) return;
+    state.renderLock = true;
+
+    const start = state.rendered;
+    const total = state.filteredIdx.length;
+    if (start >= total) {
+      elProgress.textContent = `${human(total)} shown`;
+      state.renderLock = false;
+      return;
+    }
+
+    const end = Math.min(start + state.chunk, total);
+    const frag = document.createDocumentFragment();
+
+    for (let i = start; i < end; i++) {
+      const rIdx = state.filteredIdx[i];
+      const row = state.rows[rIdx];
+      const tr = document.createElement('tr');
+      for (let c = 0; c < state.headers.length; c++) {
+        const td = document.createElement('td');
+        const v = row[c] ?? '';
+        td.title = String(v);
+        td.textContent = v;
+        tr.appendChild(td);
+      }
+      frag.appendChild(tr);
+    }
+
+    elTbody.appendChild(frag);
+    state.rendered = end;
+    elProgress.textContent = `Showing ${human(state.rendered)} / ${human(total)}`;
+
+    state.renderLock = false;
+  }
+
+  function updateSummary() {
+    const total = state.rows.length;
+    const filtered = state.filteredIdx.length;
+    const cols = state.headers.length;
+    elDims.textContent = `${human(filtered)}/${human(total)} rows • ${human(cols)} cols`;
+    setSummary(`${human(filtered)} row(s) match filters`);
+    elBtnDownload.disabled = filtered === 0;
+    elBtnCopy.disabled = filtered === 0;
+  }
+
+  function loadData(allRows) {
+    setStatus('Parsing rows…');
+    if (!allRows || allRows.length === 0) {
+      reset();
+      setStatus('No data');
+      return;
+    }
+
+    const hasHeader = state.hasHeader;
+    let headers, rows;
+    if (hasHeader) {
+      headers = buildHeaders(allRows[0], allRows[0].length);
+      rows = allRows.slice(1);
+      // ensure row length matches headers
+      rows = rows.map(r => {
+        const copy = r.slice(0, headers.length);
+        while (copy.length < headers.length) copy.push('');
+        return copy;
+      });
+    } else {
+      const cols = Math.max(...allRows.map(r => r.length));
+      headers = buildHeaders(Array(cols).fill(''), cols);
+      rows = allRows.map(r => {
+        const copy = r.slice(0, cols);
+        while (copy.length < cols) copy.push('');
+        return copy;
+      });
+    }
+
+    state.headers = headers;
+    state.rows = rows;
+    state.types = inferTypes(rows, headers);
+    state.sortCol = -1;
+    state.sortDir = 1;
+    elBtnClear.disabled = false;
+
+    // Render
+    renderTable();
+    setStatus('Ready');
+  }
+
+  function reset() {
+    state.headers = [];
+    state.rows = [];
+    state.filters = [];
+    state.filteredIdx = [];
+    state.sortCol = -1;
+    state.sortDir = 1;
+    state.rendered = 0;
+    elTable.classList.add('hidden');
+    elThead.innerHTML = '';
+    clearTbody();
+    elDims.textContent = '—';
+    elProgress.textContent = '';
+    elBtnClear.disabled = true;
+    elBtnCopy.disabled = true;
+    elBtnDownload.disabled = true;
+    elFilename.textContent = '';
+    setSummary('No data loaded');
+  }
+
+  function handleCSVText(text, filename='') {
+    try {
+      setStatus('Detecting delimiter…');
+      const delim = elAutoDetect.checked ? detectDelimiterByParse(text) : (elDelimiter.value === '\\t' ? '\t' : elDelimiter.value);
+      state.delimiter = delim;
+      // Sync select UI to detected delimiter if auto
+      if (elAutoDetect.checked) {
+        const v = (delim === '\t') ? '\\t' : delim;
+        elDelimiter.value = v;
+      }
+
+      setStatus('Parsing CSV…');
+      const rows = parseCSV(text, delim);
+      loadData(rows);
+      elFilename.textContent = filename ? `(${filename})` : '';
+    } catch (e) {
+      console.error(e);
+      setStatus('Error parsing CSV');
+      alert('Failed to parse CSV: ' + (e && e.message ? e.message : e));
+    }
+  }
+
+  // Event wiring
+  elFile.addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) return;
+    setStatus('Reading file…');
+    const text = await f.text();
+    handleCSVText(text, f.name);
+  });
+
+  elDrop.addEventListener('dragover', (e) => { e.preventDefault(); elDrop.classList.add('dragover'); });
+  elDrop.addEventListener('dragleave', () => elDrop.classList.remove('dragover'));
+  elDrop.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    elDrop.classList.remove('dragover');
+    const dt = e.dataTransfer;
+    if (!dt) return;
+    if (dt.files && dt.files.length) {
+      const f = dt.files[0];
+      const text = await f.text();
+      handleCSVText(text, f.name);
+    } else if (dt.items) {
+      for (const item of dt.items) {
+        if (item.kind === 'string') {
+          item.getAsString((s) => handleCSVText(s));
+          break;
+        }
+      }
+    }
+  });
+  // Paste CSV text into dropzone
+  elDrop.addEventListener('paste', (e) => {
+    const s = e.clipboardData?.getData('text/plain');
+    if (s) {
+      e.preventDefault();
+      handleCSVText(s);
+    }
+  });
+
+  elHasHeader.addEventListener('change', () => {
+    state.hasHeader = elHasHeader.checked;
+    if (state.rows.length || state.headers.length) {
+      // Re-parse from original text is not stored, so rebuild using current parsed rows:
+      // If toggled, reconstruct by prepending headers or promoting first row to headers
+      // Simpler: recompute headers and rows from existing combined data
+      const combined = state.hasHeader ? [state.headers, ...state.rows] : [...state.rows];
+      loadData(combined);
+    }
+  });
+
+  elAutoDetect.addEventListener('change', () => {
+    elDelimiter.disabled = elAutoDetect.checked;
+  });
+  elDelimiter.addEventListener('change', () => {
+    // Reparse only if we have original text; we don't store it. So we can't reparse accurately.
+    // Notify user to reload file if they want different delimiter unless auto-detect was wrong
+    // Practical approach: warn if table loaded.
+    if (state.rows.length) {
+      setStatus('Change delimiter and re-open the file to re-parse.');
+    }
+  });
+
+  elBtnClear.addEventListener('click', () => {
+    reset();
+    setStatus('Cleared');
+  });
+
+  elBtnSample.addEventListener('click', () => {
+    const sample = `Name,Department,Age,Salary
+Alice,Engineering,31,123000
+Bob,Sales,27,83000
+Carla,HR,41,99000
+Daniel,Engineering,29,110000
+Eve,Finance,35,132500
+Frank,Sales,25,72000
+Grace,Engineering,38,142000
+Heidi,HR,33,95000
+Ivan,Finance,44,150000
+Judy,Engineering,28,105000`;
+    elHasHeader.checked = true;
+    state.hasHeader = true;
+    elAutoDetect.checked = true;
+    elDelimiter.disabled = true;
+    handleCSVText(sample, 'sample.csv');
+  });
+
+  elBtnDownload.addEventListener('click', () => {
+    if (!state.filteredIdx.length) return;
+    const json = toJSON();
+    const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const base = (elFilename.textContent || '(data)').replace(/[()]/g,'').trim() || 'data';
+    a.download = `${base.replace(/\.[^.]+$/, '')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(a.href);
+  });
+
+  elBtnCopy.addEventListener('click', async () => {
+    if (!state.filteredIdx.length) return;
+    const json = toJSON();
+    try {
+      await navigator.clipboard.writeText(json);
+      setStatus('JSON copied to clipboard');
+    } catch {
+      setStatus('Clipboard blocked; creating a selectable box');
+      const w = window.open('', '_blank');
+      w.document.write('<pre style="white-space:pre; font-family:monospace;">'+
+                       escapeHtml(json) + '</pre>');
+    }
+  });
+
+  function toJSON() {
+    const { headers, rows, filteredIdx } = state;
+    // Map rows to objects
+    const out = new Array(filteredIdx.length);
+    for (let i=0;i<filteredIdx.length;i++){
+      const r = rows[filteredIdx[i]];
+      const obj = {};
+      for (let c=0;c<headers.length;c++){
+        obj[headers[c]] = r[c] ?? '';
+      }
+      out[i] = obj;
+    }
+    return JSON.stringify(out, null, 2);
+  }
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, (c)=>({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+  }
+
+  // Infinite render on scroll
+  elScroll.addEventListener('scroll', () => {
+    const nearBottom = elScroll.scrollTop + elScroll.clientHeight >= elScroll.scrollHeight - 200;
+    if (nearBottom) renderMore();
+  });
+
+  // Polyfill requestIdleCallback
+  function requestIdleCallbackPoly(fn) {
+    if ('requestIdleCallback' in window) return window.requestIdleCallback(fn, { timeout: 500 });
+    return setTimeout(fn, 0);
+  }
+
+  // Initial
+  reset();
+  setStatus('Ready');
+
+})();
+</script>
+</body>
+</html>
