@@ -1,0 +1,494 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Seamless Tiling Texture Checker</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0f1115;
+    --panel: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.15);
+    --text: #e8eaf0;
+    --muted: #9aa3b2;
+    --accent: #6aa6ff;
+    --focus: #8bc0ff;
+    --danger: #ff5d73;
+  }
+
+  html, body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+  }
+
+  .app {
+    display: grid;
+    grid-template-rows: auto 1fr;
+    height: 100%;
+  }
+
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    align-items: center;
+    padding: 12px 16px;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.35), rgba(0,0,0,0.12));
+    border-bottom: 1px solid var(--border);
+    backdrop-filter: blur(6px);
+  }
+
+  header .title {
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    margin-right: 8px;
+    white-space: nowrap;
+  }
+
+  .spacer {
+    flex: 1;
+  }
+
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 16px;
+    align-items: center;
+  }
+
+  .group {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 8px 10px;
+    border-radius: 10px;
+  }
+
+  .group label {
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  input[type="range"] {
+    appearance: none;
+    height: 22px;
+    background: transparent;
+    width: 220px;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    background: linear-gradient(90deg, var(--accent), var(--focus));
+    border-radius: 999px;
+    opacity: 0.6;
+  }
+  input[type="range"]::-moz-range-track {
+    height: 4px;
+    background: linear-gradient(90deg, var(--accent), var(--focus));
+    border-radius: 999px;
+    opacity: 0.6;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 16px; height: 16px;
+    background: white;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    margin-top: -6px;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px; height: 14px;
+    background: white;
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+  }
+
+  input[type="number"] {
+    width: 76px;
+    padding: 6px 8px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.05);
+    color: var(--text);
+    outline: none;
+  }
+  input[type="number"]:focus {
+    border-color: var(--focus);
+    box-shadow: 0 0 0 3px rgba(100, 150, 255, 0.2);
+  }
+
+  .btn {
+    appearance: none;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 600;
+  }
+  .btn:hover { border-color: var(--focus); }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary {
+    border-color: var(--accent);
+    background: linear-gradient(180deg, rgba(120,160,255,0.25), rgba(120,160,255,0.12));
+  }
+
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .toggle input {
+    appearance: none;
+    width: 34px; height: 20px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.18);
+    position: relative;
+    outline: none;
+    border: 1px solid var(--border);
+    transition: background 0.2s ease;
+  }
+  .toggle input:after {
+    content: "";
+    position: absolute; top: 50%; left: 2px;
+    width: 16px; height: 16px;
+    transform: translate(0, -50%);
+    background: white;
+    border-radius: 50%;
+    box-shadow: 0 1px 6px rgba(0,0,0,0.35);
+    transition: transform 0.2s ease;
+  }
+  .toggle input:checked {
+    background: linear-gradient(90deg, var(--accent), var(--focus));
+    border-color: var(--accent);
+  }
+  .toggle input:checked:after { transform: translate(14px, -50%); }
+  .toggle span {
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  /* Viewer */
+  .viewer {
+    position: relative;
+    height: calc(100vh - 72px);
+    outline: none;
+    --img: none;
+    --tileX: 128px;
+    --tileY: 128px;
+    --offsetX: 0px;
+    --offsetY: 0px;
+    --gridColor: rgba(255,255,255,0.28);
+    --gridWidth: 1px;
+    --checkSize: 16px;
+
+    /* Layer order: grid vertical, grid horizontal, image, checkerboard */
+    background-image:
+      repeating-linear-gradient(to right, var(--gridColor) 0 var(--gridWidth), transparent var(--gridWidth) var(--tileX)),
+      repeating-linear-gradient(to bottom, var(--gridColor) 0 var(--gridWidth), transparent var(--gridWidth) var(--tileY)),
+      var(--img),
+      conic-gradient(#b9c1cc 25%, #dadfe6 0 50%, #b9c1cc 0 75%, #dadfe6 0);
+    background-size:
+      auto auto,
+      auto auto,
+      var(--tileX) var(--tileY),
+      var(--checkSize) var(--checkSize);
+    background-position:
+      var(--offsetX) var(--offsetY),
+      var(--offsetX) var(--offsetY),
+      var(--offsetX) var(--offsetY),
+      0 0;
+    background-repeat: repeat;
+    image-rendering: auto; /* toggled to pixelated via JS if needed */
+    border-top: 1px solid var(--border);
+  }
+
+  .viewer .placeholder {
+    position: absolute; inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    color: var(--muted);
+    text-align: center;
+    pointer-events: none;
+  }
+
+  .viewer.drop-ready {
+    outline: 3px dashed var(--focus);
+    outline-offset: -6px;
+  }
+
+  .viewer.clickable {
+    cursor: pointer;
+  }
+
+  .meta {
+    display: inline-flex;
+    gap: 12px;
+    align-items: baseline;
+    color: var(--muted);
+    font-size: 12px;
+  }
+
+  .meta .value {
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  @media (max-width: 880px) {
+    input[type="range"] { width: 160px; }
+    .viewer { height: calc(100vh - 120px); }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div class="title">Seamless Tiling Texture Checker</div>
+
+      <div class="controls">
+        <button class="btn primary" id="openBtn">Open Image…</button>
+
+        <div class="group">
+          <label for="scaleRange">Scale</label>
+          <input id="scaleRange" type="range" min="1" max="1000" step="1" value="100" />
+          <input id="scaleInput" type="number" min="1" max="1000" step="1" value="100" />
+          <span>%</span>
+          <button class="btn" id="resetScale" title="Reset scale to 100%">Reset</button>
+        </div>
+
+        <label class="toggle group" title="Offset by half a tile (centers seams)">
+          <input id="halfOffset" type="checkbox" />
+          <span>Half-offset</span>
+        </label>
+
+        <label class="toggle group" title="Show tile grid lines">
+          <input id="showGrid" type="checkbox" checked />
+          <span>Grid</span>
+        </label>
+
+        <label class="toggle group" title="Use pixelated filtering when scaling up">
+          <input id="pixelated" type="checkbox" />
+          <span>Pixelated</span>
+        </label>
+      </div>
+
+      <div class="spacer"></div>
+
+      <div class="meta">
+        <div>Image: <span id="imgInfo" class="value">—</span></div>
+        <div>Tile: <span id="tileInfo" class="value">—</span></div>
+      </div>
+    </header>
+
+    <div id="viewer" class="viewer clickable" tabindex="0" aria-label="Drop an image here or click to choose a file">
+      <div class="placeholder">
+        <div>
+          <div style="font-size:16px; font-weight:600; color:var(--text); margin-bottom:6px;">Drop an image here</div>
+          <div>…or click to choose a file. Adjust the scale to inspect seams. Toggle half-offset to bring seams to the center.</div>
+        </div>
+      </div>
+    </div>
+
+    <input id="fileInput" type="file" accept="image/*" hidden />
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  const el = {
+    viewer: document.getElementById('viewer'),
+    file: document.getElementById('fileInput'),
+    openBtn: document.getElementById('openBtn'),
+    scaleRange: document.getElementById('scaleRange'),
+    scaleInput: document.getElementById('scaleInput'),
+    resetScale: document.getElementById('resetScale'),
+    halfOffset: document.getElementById('halfOffset'),
+    showGrid: document.getElementById('showGrid'),
+    pixelated: document.getElementById('pixelated'),
+    imgInfo: document.getElementById('imgInfo'),
+    tileInfo: document.getElementById('tileInfo'),
+  };
+
+  const state = {
+    url: null,
+    naturalW: 0,
+    naturalH: 0,
+    scale: 100, // percent
+    halfOffset: false,
+    showGrid: true,
+    pixelated: false,
+  };
+
+  function setCSSVar(name, value) {
+    el.viewer.style.setProperty(name, value);
+  }
+
+  function updateView() {
+    const tileW = Math.max(1, Math.round(state.naturalW * state.scale / 100));
+    const tileH = Math.max(1, Math.round(state.naturalH * state.scale / 100));
+
+    setCSSVar('--tileX', tileW + 'px');
+    setCSSVar('--tileY', tileH + 'px');
+
+    if (state.halfOffset) {
+      setCSSVar('--offsetX', (tileW / 2) + 'px');
+      setCSSVar('--offsetY', (tileH / 2) + 'px');
+    } else {
+      setCSSVar('--offsetX', '0px');
+      setCSSVar('--offsetY', '0px');
+    }
+
+    if (state.showGrid) {
+      setCSSVar('--gridColor', 'rgba(255,255,255,0.28)');
+      setCSSVar('--gridWidth', '1px');
+    } else {
+      setCSSVar('--gridColor', 'rgba(255,255,255,0.0)');
+      setCSSVar('--gridWidth', '0px');
+    }
+
+    el.viewer.style.imageRendering = state.pixelated ? 'pixelated' : 'auto';
+
+    // UI info
+    el.imgInfo.textContent = state.naturalW && state.naturalH ? `${state.naturalW} × ${state.naturalH}px` : '—';
+    el.tileInfo.textContent = state.naturalW && state.naturalH ? `${tileW} × ${tileH}px @ ${state.scale}%` : '—';
+  }
+
+  function setScale(percent) {
+    const v = clamp(Math.round(percent), 1, 1000);
+    state.scale = v;
+    el.scaleRange.value = String(v);
+    el.scaleInput.value = String(v);
+    updateView();
+  }
+
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+  function setImageURL(url, naturalW, naturalH) {
+    // Revoke previous URL if any
+    if (state.url && state.url !== url) {
+      try { URL.revokeObjectURL(state.url); } catch {}
+    }
+    state.url = url;
+    state.naturalW = naturalW;
+    state.naturalH = naturalH;
+
+    if (url) {
+      el.viewer.classList.remove('clickable');
+      setCSSVar('--img', `url("${url}")`);
+    } else {
+      el.viewer.classList.add('clickable');
+      setCSSVar('--img', 'none');
+    }
+    updateView();
+  }
+
+  function loadFile(file) {
+    if (!file) return;
+    if (!file.type || !file.type.startsWith('image/')) {
+      alert('Please choose an image file.');
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      setImageURL(url, img.naturalWidth, img.naturalHeight);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      alert('Could not load image.');
+    };
+    img.src = url;
+  }
+
+  // Events
+  el.openBtn.addEventListener('click', () => el.file.click());
+  el.viewer.addEventListener('click', (e) => {
+    // Only trigger if user clicks empty area (not while holding a drag)
+    if (e.target === el.viewer || e.target.classList.contains('placeholder')) {
+      el.file.click();
+    }
+  });
+  el.file.addEventListener('change', (e) => {
+    const file = e.target.files && e.target.files[0];
+    loadFile(file);
+    // Reset input so same file can be reselected if desired
+    e.target.value = '';
+  });
+
+  // Drag and drop
+  function prevent(e) { e.preventDefault(); e.stopPropagation(); }
+  ['dragenter','dragover'].forEach(evt =>
+    el.viewer.addEventListener(evt, (e) => {
+      prevent(e);
+      el.viewer.classList.add('drop-ready');
+    })
+  );
+  ['dragleave','drop'].forEach(evt =>
+    el.viewer.addEventListener(evt, (e) => {
+      prevent(e);
+      el.viewer.classList.remove('drop-ready');
+    })
+  );
+  el.viewer.addEventListener('drop', (e) => {
+    const dt = e.dataTransfer;
+    if (!dt) return;
+    const file = dt.files && dt.files[0];
+    if (file) loadFile(file);
+  });
+
+  // Paste image from clipboard
+  window.addEventListener('paste', (e) => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const it of items) {
+      if (it.type && it.type.startsWith('image/')) {
+        const file = it.getAsFile();
+        if (file) { loadFile(file); break; }
+      }
+    }
+  });
+
+  // Scale controls
+  el.scaleRange.addEventListener('input', (e) => setScale(e.target.value));
+  el.scaleInput.addEventListener('input', (e) => setScale(e.target.value));
+  el.resetScale.addEventListener('click', () => setScale(100));
+
+  // Quick zoom with Ctrl/Cmd + wheel (optional nicety)
+  el.viewer.addEventListener('wheel', (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    const delta = Math.sign(e.deltaY);
+    const step = Math.max(1, Math.round(state.scale * 0.05));
+    setScale(state.scale - delta * step);
+  }, { passive: false });
+
+  // Toggles
+  el.halfOffset.addEventListener('change', (e) => { state.halfOffset = e.target.checked; updateView(); });
+  el.showGrid.addEventListener('change', (e) => { state.showGrid = e.target.checked; updateView(); });
+  el.pixelated.addEventListener('change', (e) => { state.pixelated = e.target.checked; updateView(); });
+
+  // Initialize
+  setScale(100);
+  setImageURL(null, 0, 0);
+})();
+</script>
+</body>
+</html>
