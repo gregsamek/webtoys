@@ -1,0 +1,1041 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Canvas Image Resizer / Cropper / JPEG Compressor</title>
+<style>
+  :root{
+    --bg:#0f1115;
+    --panel:#161a22;
+    --muted:#8a93a5;
+    --text:#e8ecf1;
+    --accent:#4ea1ff;
+    --accent-2:#31d0aa;
+    --warn:#ffb84e;
+    --danger:#ff6b6b;
+    --border:#222835;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  }
+  a { color: var(--accent); text-decoration: none; }
+  .app {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 16px;
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 16px;
+  }
+  @media (max-width: 980px){
+    .app { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: clip;
+  }
+  .panel h2 {
+    margin: 0;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 14px;
+    letter-spacing: .02em;
+    color: #cfd6e6;
+  }
+  .controls {
+    padding: 12px;
+    display: grid;
+    gap: 12px;
+  }
+  .row { display: grid; gap: 8px; }
+  .row.inline { grid-template-columns: 1fr auto; align-items: center; }
+  .row.cols-2 { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .row.cols-3 { grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  .row.cols-auto { grid-template-columns: auto 1fr; gap: 8px; align-items: center; }
+  label { color: var(--muted); font-size: 12px; }
+  input[type="number"], input[type="text"], input[type="color"], input[type="range"], select {
+    width: 100%;
+  }
+  .field {
+    display: grid;
+    gap: 6px;
+  }
+  .input, select, input[type="color"] {
+    height: 34px;
+    border: 1px solid var(--border);
+    background: #0f1219;
+    color: var(--text);
+    border-radius: 8px;
+    padding: 0 10px;
+    outline: none;
+  }
+  input[type="range"] { padding: 0; height: 28px; }
+  .btn {
+    background: #1e2533;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    user-select: none;
+    transition: background .15s, border-color .15s, transform .02s;
+  }
+  .btn:hover { background: #242c3d; border-color: #2a3245; }
+  .btn:active { transform: translateY(1px); }
+  .btn.primary { background: #1b304c; border-color: #2f4565; color: #e9f2ff; }
+  .btn.primary:hover { background: #234062; }
+  .btn.accent { background: #113d37; border-color: #1a5e54; color: #d6fff7; }
+  .btn.warn { background: #3b2b12; border-color: #5c4218; color: #ffe7bf; }
+  .btn.danger { background: #3c1818; border-color: #5b2323; color: #ffe3e3; }
+  .btn.block { width: 100%; }
+  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .kbd {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    background: #0c0f15;
+    border: 1px solid var(--border);
+    padding: 2px 6px;
+    border-radius: 6px;
+    color: #c7d2e4;
+    font-size: 12px;
+  }
+  .muted { color: var(--muted); }
+  .info {
+    padding: 10px 12px;
+    border-top: 1px dashed var(--border);
+    background: #131822;
+    color: #c8d2e4;
+    font-size: 12px;
+    display: grid;
+    gap: 6px;
+  }
+  .drop {
+    border: 2px dashed #2a3347;
+    background: #0b0e14;
+    border-radius: 10px;
+    padding: 12px;
+    text-align: center;
+    color: #aeb8cc;
+  }
+  .drop.dragover {
+    border-color: var(--accent);
+    background: #0d1420;
+    color: #cfe5ff;
+  }
+
+  /* Preview area */
+  .viewport {
+    position: relative;
+    min-height: 320px;
+    height: min(75vh, 800px);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+  }
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    padding: 10px;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+    background: #131822;
+  }
+  .toolbar .spacer { flex: 1; }
+  .canvas-wrap {
+    position: relative;
+    background: #0c1017;
+  }
+  canvas#view {
+    width: 100%;
+    height: 100%;
+    display: block;
+    background:
+      conic-gradient(#10141c 25%, #0b0e14 0 50%, #10141c 0 75%, #0b0e14 0) 0 0/20px 20px content-box;
+    cursor: crosshair;
+    touch-action: none;
+  }
+  .statusbar {
+    display: flex;
+    gap: 12px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: #cbd6ea;
+    background: #121722;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .pill {
+    background: #0e1220;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 4px 8px;
+    color: #c8d2e4;
+  }
+  .right { margin-left: auto; }
+  .small { font-size: 12px; }
+  .hint { color: #9fb0cd; }
+  .sep { opacity: .5; margin: 0 .25em; }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="panel viewport">
+      <div class="toolbar">
+        <div class="btn-row">
+          <label class="btn">
+            <input id="file" type="file" accept="image/*" hidden />
+            Open image…
+          </label>
+          <button id="btn-paste" class="btn" title="Paste image from clipboard (Ctrl/Cmd+V)">Paste</button>
+          <button id="btn-reset" class="btn warn" title="Reset crop to full image">Reset crop</button>
+        </div>
+        <div class="spacer"></div>
+        <div class="btn-row">
+          <button id="btn-rot-ccw" class="btn" title="Rotate 90° CCW">⟲ 90°</button>
+          <button id="btn-rot-cw" class="btn" title="Rotate 90° CW">⟳ 90°</button>
+          <button id="btn-flip-h" class="btn" title="Flip horizontally">⇋</button>
+          <button id="btn-flip-v" class="btn" title="Flip vertically">⇵</button>
+        </div>
+      </div>
+      <div id="drop" class="canvas-wrap drop">
+        <canvas id="view"></canvas>
+        <div class="muted small" id="drop-hint">Drop image here, click "Open", or press Ctrl/Cmd+V to paste</div>
+      </div>
+      <div class="statusbar">
+        <span id="status-src" class="pill">Source: –</span>
+        <span id="status-crop" class="pill">Crop: –</span>
+        <span id="status-out" class="pill">Output: –</span>
+        <span id="status-size" class="pill right">Estimated: –</span>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Export Settings</h2>
+      <div class="controls">
+        <div class="row">
+          <div id="drop-2" class="drop small">
+            You can also drag & drop an image file here.
+          </div>
+        </div>
+
+        <div class="row cols-2">
+          <div class="field">
+            <label for="outW">Output width (px)</label>
+            <input id="outW" class="input" type="number" min="1" value="1024" />
+          </div>
+          <div class="field">
+            <label for="outH">Output height (px)</label>
+            <input id="outH" class="input" type="number" min="1" value="1024" />
+          </div>
+        </div>
+
+        <div class="row btn-row">
+          <label class="btn">
+            <input id="lockOutAspect" type="checkbox" checked />
+            Lock output aspect
+          </label>
+          <button id="btn-out-from-crop" class="btn" title="Set output size to current crop size">Use crop size</button>
+          <button id="btn-crop-to-out" class="btn" title="Make crop match output aspect">Crop to output aspect</button>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label for="quality">JPEG quality: <span id="q-label">0.85</span></label>
+            <input id="quality" type="range" min="0" max="1" step="0.01" value="0.85" />
+          </div>
+        </div>
+
+        <div class="row cols-2">
+          <div class="field">
+            <label for="bg">Background (for JPEG transparency)</label>
+            <input id="bg" type="color" value="#ffffff" />
+          </div>
+          <div class="field">
+            <label>&nbsp;</label>
+            <label class="btn">
+              <input id="fillBg" type="checkbox" checked />
+              Fill background
+            </label>
+          </div>
+        </div>
+
+        <div class="row btn-row">
+          <button id="btn-preview" class="btn" title="Update size estimate preview">Update estimate</button>
+          <button id="btn-copy" class="btn" title="Copy JPEG to clipboard (supported browsers)">Copy JPEG</button>
+          <button id="btn-download" class="btn primary" title="Export and download JPEG">Download JPEG</button>
+        </div>
+
+        <div class="info">
+          <div>
+            Tips:
+            • Move crop: drag inside the rectangle
+            • Resize: drag edges or corners
+            • Hold Shift while resizing to lock crop to output aspect
+          </div>
+          <div class="hint">
+            Shortcuts:
+            <span class="kbd">Arrow keys</span> move crop •
+            <span class="kbd">Shift+Arrow</span> resize crop •
+            <span class="kbd">Ctrl/Cmd+V</span> paste image
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+(() => {
+  'use strict';
+
+  // Elements
+  const $ = sel => document.querySelector(sel);
+  const view = $('#view');
+  const drop = $('#drop');
+  const drop2 = $('#drop-2');
+  const fileInput = $('#file');
+  const btnPaste = $('#btn-paste');
+  const btnReset = $('#btn-reset');
+  const btnRotCCW = $('#btn-rot-ccw');
+  const btnRotCW = $('#btn-rot-cw');
+  const btnFlipH = $('#btn-flip-h');
+  const btnFlipV = $('#btn-flip-v');
+
+  const outWEl = $('#outW');
+  const outHEl = $('#outH');
+  const lockOutAspectEl = $('#lockOutAspect');
+  const qualityEl = $('#quality');
+  const qLabel = $('#q-label');
+  const fillBgEl = $('#fillBg');
+  const bgEl = $('#bg');
+  const btnOutFromCrop = $('#btn-out-from-crop');
+  const btnCropToOut = $('#btn-crop-to-out');
+  const btnPreview = $('#btn-preview');
+  const btnCopy = $('#btn-copy');
+  const btnDownload = $('#btn-download');
+
+  const statusSrc = $('#status-src');
+  const statusCrop = $('#status-crop');
+  const statusOut = $('#status-out');
+  const statusSize = $('#status-size');
+  const dropHint = $('#drop-hint');
+
+  // Canvas contexts and state
+  const dpr = () => Math.max(1, window.devicePixelRatio || 1);
+  let srcCanvas = null; // Oriented/edited source image canvas
+  let srcW = 0, srcH = 0;
+
+  // Crop rect in source coordinates {x,y,w,h}
+  let crop = { x:0, y:0, w:0, h:0 };
+  const minCrop = 8; // px
+
+  // View mapping
+  let scale = 1, offX = 0, offY = 0, viewW = 0, viewH = 0;
+
+  // Interaction
+  let isPointerDown = false;
+  let dragMode = null; // 'move' or handle name
+  let start = { x:0, y:0, crop:null };
+  const handleSize = 10; // CSS px
+  const handleCatch = 10; // CSS px for hit test
+  let shiftLock = false;
+
+  // Utility
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+  function round(n){ return Math.round(n); }
+
+  function toView(x, y){
+    return [offX + x * scale, offY + y * scale];
+  }
+  function toSrc(vx, vy){
+    return [(vx - offX) / scale, (vy - offY) / scale];
+  }
+
+  function computeView(){
+    const rect = drop.getBoundingClientRect();
+    viewW = rect.width;
+    viewH = rect.height;
+    const ratio = srcW && srcH ? Math.min(viewW / srcW, viewH / srcH) : 1;
+    scale = ratio;
+    offX = (viewW - srcW * scale) / 2;
+    offY = (viewH - srcH * scale) / 2;
+
+    const ratioDPR = dpr();
+    view.width = Math.max(1, Math.floor(viewW * ratioDPR));
+    view.height = Math.max(1, Math.floor(viewH * ratioDPR));
+    view.style.width = viewW + 'px';
+    view.style.height = viewH + 'px';
+  }
+
+  function draw(){
+    const ctx = view.getContext('2d');
+    const ratioDPR = dpr();
+    ctx.setTransform(ratioDPR, 0, 0, ratioDPR, 0, 0);
+    ctx.clearRect(0, 0, viewW, viewH);
+
+    // Background checkerboard is CSS; we can add shadow border
+    // Draw image
+    if (srcCanvas){
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(srcCanvas, 0, 0, srcW, srcH, offX, offY, srcW * scale, srcH * scale);
+
+      // Darken outside crop
+      const [cx, cy] = toView(crop.x, crop.y);
+      const cw = crop.w * scale, ch = crop.h * scale;
+
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.beginPath();
+      ctx.rect(0, 0, viewW, viewH);
+      ctx.rect(cx, cy, cw, ch);
+      ctx.fill('evenodd');
+      ctx.restore();
+
+      // Draw crop border
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = 'rgba(255,255,255,.95)';
+      ctx.setLineDash([]);
+      ctx.strokeRect(cx + 0.5, cy + 0.5, cw - 1, ch - 1);
+      ctx.strokeStyle = 'rgba(0,0,0,.9)';
+      ctx.strokeRect(cx - 0.5, cy - 0.5, cw + 1, ch + 1);
+      ctx.restore();
+
+      // Rule of thirds
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,.35)';
+      ctx.lineWidth = 1;
+      for (let i=1;i<=2;i++){
+        const x = cx + (i * cw / 3);
+        const y = cy + (i * ch / 3);
+        ctx.beginPath(); ctx.moveTo(x, cy); ctx.lineTo(x, cy + ch); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(cx, y); ctx.lineTo(cx + cw, y); ctx.stroke();
+      }
+      ctx.restore();
+
+      // Handles
+      const hs = handleSize;
+      const handles = getHandles(); // in view coords
+      ctx.save();
+      ctx.fillStyle = '#e8ecf1';
+      ctx.strokeStyle = '#0a0e15';
+      for (const h of handles){
+        ctx.beginPath();
+        ctx.rect(h.x - hs/2, h.y - hs/2, hs, hs);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    // Update status
+    updateStatus();
+  }
+
+  function getHandles(){
+    // Return handle centers in view coords with name
+    const [cx, cy] = toView(crop.x, crop.y);
+    const cw = crop.w * scale, ch = crop.h * scale;
+    const points = [
+      {name:'nw', x: cx,       y: cy},
+      {name:'n',  x: cx+cw/2,  y: cy},
+      {name:'ne', x: cx+cw,    y: cy},
+      {name:'e',  x: cx+cw,    y: cy+ch/2},
+      {name:'se', x: cx+cw,    y: cy+ch},
+      {name:'s',  x: cx+cw/2,  y: cy+ch},
+      {name:'sw', x: cx,       y: cy+ch},
+      {name:'w',  x: cx,       y: cy+ch/2},
+    ];
+    return points;
+  }
+
+  function hitTestHandle(vx, vy){
+    const handles = getHandles();
+    const r = handleCatch;
+    for (const h of handles){
+      if (Math.abs(vx - h.x) <= r && Math.abs(vy - h.y) <= r) return h.name;
+    }
+    // Edge hit (for convenience)
+    const [cx, cy] = toView(crop.x, crop.y);
+    const cw = crop.w * scale, ch = crop.h * scale;
+    const edge = 6;
+    if (vx > cx && vx < cx+cw && vy > cy-edge && vy < cy+edge) return 'n';
+    if (vx > cx && vx < cx+cw && vy > cy+ch-edge && vy < cy+ch+edge) return 's';
+    if (vy > cy && vy < cy+ch && vx > cx-edge && vx < cx+edge) return 'w';
+    if (vy > cy && vy < cy+ch && vx > cx+cw-edge && vx < cx+cw+edge) return 'e';
+    // Inside?
+    if (vx > cx && vx < cx+cw && vy > cy && vy < cy+ch) return 'move';
+    return null;
+  }
+
+  function setCrop(next){
+    // Clamp crop rect within [0,srcW/H] with min size
+    const minW = minCrop, minH = minCrop;
+    let x = next.x, y = next.y, w = next.w, h = next.h;
+
+    // Normalize if negative
+    if (w < 0){ x = x + w; w = -w; }
+    if (h < 0){ y = y + h; h = -h; }
+
+    w = Math.max(minW, w);
+    h = Math.max(minH, h);
+
+    // Clamp position
+    if (x < 0) x = 0;
+    if (y < 0) y = 0;
+    if (x + w > srcW) x = srcW - w;
+    if (y + h > srcH) y = srcH - h;
+
+    crop.x = x;
+    crop.y = y;
+    crop.w = w;
+    crop.h = h;
+  }
+
+  function getOutAspect(){
+    const w = Math.max(1, +outWEl.value | 0);
+    const h = Math.max(1, +outHEl.value | 0);
+    return w / h;
+  }
+
+  function cropToOutputAspect(){
+    if (!srcCanvas) return;
+    const r = getOutAspect();
+    let {x,y,w,h} = crop;
+    const c = { cx: x + w/2, cy: y + h/2 };
+
+    // Fit current crop to desired aspect, shrinking as needed
+    const cur = w / h;
+    if (Math.abs(cur - r) < 1e-6) return;
+    if (cur > r){
+      // too wide -> reduce width
+      const newW = h * r;
+      w = Math.min(newW, srcW);
+    } else {
+      // too tall -> reduce height
+      const newH = w / r;
+      h = Math.min(newH, srcH);
+    }
+    x = clamp(c.cx - w/2, 0, srcW - w);
+    y = clamp(c.cy - h/2, 0, srcH - h);
+    setCrop({x,y,w,h});
+    draw();
+  }
+
+  function outputFromCrop(){
+    if (!srcCanvas) return;
+    outWEl.value = Math.max(1, Math.round(crop.w));
+    outHEl.value = Math.max(1, Math.round(crop.h));
+    updateStatus();
+    debouncedEstimate();
+  }
+
+  function updateStatus(){
+    statusSrc.textContent = srcCanvas ? `Source: ${srcW} × ${srcH}` : 'Source: –';
+    statusCrop.textContent = srcCanvas ? `Crop: ${Math.round(crop.w)} × ${Math.round(crop.h)} @ (${Math.round(crop.x)}, ${Math.round(crop.y)})` : 'Crop: –';
+    const ow = Math.max(1, +outWEl.value | 0);
+    const oh = Math.max(1, +outHEl.value | 0);
+    statusOut.textContent = `Output: ${ow} × ${oh}`;
+  }
+
+  function setOutW(val){
+    const v = Math.max(1, val | 0);
+    const lock = lockOutAspectEl.checked;
+    const r = getOutAspect() || 1;
+    outWEl.value = v;
+    if (lock){
+      // preserve ratio by updating height
+      // Use previous ratio if possible
+      const prevH = Math.max(1, +outHEl.value | 0);
+      const newH = Math.max(1, Math.round(v / r)); // r computed before change; recompute fresh:
+      const newRatio = v / prevH;
+      outHEl.value = Math.max(1, Math.round(v / newRatio));
+    }
+    updateStatus();
+    debouncedEstimate();
+  }
+
+  function setOutH(val){
+    const v = Math.max(1, val | 0);
+    const lock = lockOutAspectEl.checked;
+    const r = getOutAspect() || 1;
+    outHEl.value = v;
+    if (lock){
+      const prevW = Math.max(1, +outWEl.value | 0);
+      const newW = Math.max(1, Math.round(v * r)); // r computed before change; recompute fresh:
+      const newRatio = prevW / v;
+      outWEl.value = Math.max(1, Math.round(v * newRatio));
+    }
+    updateStatus();
+    debouncedEstimate();
+  }
+
+  // Export
+  async function renderOutputBlob(){
+    if (!srcCanvas) throw new Error('No image loaded');
+    const ow = Math.max(1, +outWEl.value | 0);
+    const oh = Math.max(1, +outHEl.value | 0);
+    const q = +qualityEl.value;
+    const fillBg = fillBgEl.checked;
+    const bg = bgEl.value;
+
+    const can = document.createElement('canvas');
+    can.width = ow;
+    can.height = oh;
+    const ctx = can.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    if (fillBg){
+      ctx.fillStyle = bg;
+      ctx.fillRect(0,0,ow,oh);
+    }
+
+    // Draw crop -> output
+    ctx.drawImage(
+      srcCanvas,
+      crop.x, crop.y, crop.w, crop.h,
+      0, 0, ow, oh
+    );
+
+    const blob = await new Promise(res => can.toBlob(res, 'image/jpeg', q));
+    if (!blob) throw new Error('Failed to encode JPEG');
+    return blob;
+  }
+
+  function formatSize(bytes){
+    if (!bytes && bytes !== 0) return '–';
+    if (bytes < 1024) return `${bytes} B`;
+    const units = ['KB','MB','GB'];
+    let i = -1;
+    do { bytes = bytes / 1024; i++; } while (bytes >= 1024 && i < units.length-1);
+    return `${bytes.toFixed(bytes < 10 ? 2 : bytes < 100 ? 1 : 0)} ${units[i]}`;
+  }
+
+  let estimateTimer = null;
+  function debouncedEstimate(){
+    clearTimeout(estimateTimer);
+    estimateTimer = setTimeout(updateEstimate, 250);
+  }
+  async function updateEstimate(){
+    if (!srcCanvas) { statusSize.textContent = 'Estimated: –'; return; }
+    try {
+      const blob = await renderOutputBlob();
+      statusSize.textContent = `Estimated: ${formatSize(blob.size)}`;
+      return blob; // sometimes used by caller
+    } catch(err){
+      console.error(err);
+      statusSize.textContent = 'Estimated: error';
+      return null;
+    }
+  }
+
+  async function doDownload(){
+    const blob = await renderOutputBlob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const ts = new Date().toISOString().replace(/[:.]/g,'-');
+    a.download = `image_${crop.w|0}x${crop.h|0}_q${(+qualityEl.value).toFixed(2)}_${ts}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  async function doCopy(){
+    try {
+      const blob = await renderOutputBlob();
+      if (!navigator.clipboard || !('ClipboardItem' in window)) {
+        alert('Clipboard API not supported in this browser.');
+        return;
+      }
+      await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
+      btnCopy.textContent = 'Copied!';
+      setTimeout(() => btnCopy.textContent = 'Copy JPEG', 1000);
+    } catch (err){
+      console.error(err);
+      alert('Copy failed: ' + err.message);
+    }
+  }
+
+  // Source loading
+  async function loadBlobAsCanvas(fileOrBlob){
+    return new Promise((resolve, reject) => {
+      const url = URL.createObjectURL(fileOrBlob);
+      const img = new Image();
+      img.onload = () => {
+        const can = document.createElement('canvas');
+        can.width = img.naturalWidth;
+        can.height = img.naturalHeight;
+        const ctx = can.getContext('2d');
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        resolve(can);
+      };
+      img.onerror = (e) => {
+        URL.revokeObjectURL(url);
+        reject(new Error('Failed to decode image'));
+      };
+      img.src = url;
+    });
+  }
+
+  async function loadFile(file){
+    try {
+      const can = await loadBlobAsCanvas(file);
+      setSourceCanvas(can, file.name || 'pasted');
+    } catch (err){
+      console.error(err);
+      alert('Failed to load image: ' + err.message);
+    }
+  }
+
+  function setSourceCanvas(can, label='image'){
+    srcCanvas = can;
+    srcW = can.width;
+    srcH = can.height;
+    crop = { x:0, y:0, w:srcW, h:srcH };
+    computeView();
+    draw();
+    drop.classList.remove('drop');
+    dropHint.style.display = 'none';
+    statusSrc.textContent = `Source: ${srcW} × ${srcH}`;
+    // Default output to source size (clamped)
+    const maxDefault = 2048;
+    const scaleDown = Math.max(srcW, srcH) > maxDefault ? maxDefault / Math.max(srcW, srcH) : 1;
+    outWEl.value = Math.max(1, Math.round(srcW * scaleDown));
+    outHEl.value = Math.max(1, Math.round(srcH * scaleDown));
+    updateStatus();
+    debouncedEstimate();
+  }
+
+  // Rotate / Flip: we mutate srcCanvas by creating a transformed copy
+  function transformSource(transform){
+    if (!srcCanvas) return;
+    const old = srcCanvas;
+    let w = old.width, h = old.height;
+    let newW = w, newH = h;
+    if (transform === 'rot90' || transform === 'rot270' || transform === 'rotCW' || transform === 'rotCCW'){
+      newW = h; newH = w;
+    }
+    const can = document.createElement('canvas');
+    can.width = newW; can.height = newH;
+    const ctx = can.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    ctx.save();
+    switch(transform){
+      case 'rotCCW': // -90°
+        ctx.translate(0, newH);
+        ctx.rotate(-Math.PI/2);
+        ctx.drawImage(old, 0, 0);
+        break;
+      case 'rotCW': // +90°
+        ctx.translate(newW, 0);
+        ctx.rotate(Math.PI/2);
+        ctx.drawImage(old, 0, 0);
+        break;
+      case 'flipH':
+        ctx.translate(newW, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(old, 0, 0);
+        break;
+      case 'flipV':
+        ctx.translate(0, newH);
+        ctx.scale(1, -1);
+        ctx.drawImage(old, 0, 0);
+        break;
+      default:
+        ctx.drawImage(old, 0, 0);
+    }
+    ctx.restore();
+
+    setSourceCanvas(can, 'transformed');
+  }
+
+  // Interaction handlers
+  function onPointerDown(e){
+    if (!srcCanvas) return;
+    view.setPointerCapture(e.pointerId);
+    isPointerDown = true;
+    shiftLock = e.shiftKey;
+    const rect = view.getBoundingClientRect();
+    const vx = e.clientX - rect.left;
+    const vy = e.clientY - rect.top;
+    const hit = hitTestHandle(vx, vy);
+    dragMode = hit;
+
+    const [sx, sy] = toSrc(vx, vy);
+    start.x = sx; start.y = sy;
+    start.crop = {...crop};
+    e.preventDefault();
+  }
+  function onPointerMove(e){
+    if (!srcCanvas) return;
+    const rect = view.getBoundingClientRect();
+    const vx = e.clientX - rect.left;
+    const vy = e.clientY - rect.top;
+
+    // Cursor feedback
+    if (!isPointerDown){
+      const hit = hitTestHandle(vx, vy);
+      let cur = 'crosshair';
+      const map = { n:'ns-resize', s:'ns-resize', e:'ew-resize', w:'ew-resize', ne:'nesw-resize', sw:'nesw-resize', nw:'nwse-resize', se:'nwse-resize', move:'move' };
+      if (hit && map[hit]) cur = map[hit];
+      view.style.cursor = cur;
+      return;
+    }
+
+    shiftLock = e.shiftKey || shiftLock;
+
+    const [sx, sy] = toSrc(vx, vy);
+    const dx = sx - start.x;
+    const dy = sy - start.y;
+
+    let next = {...start.crop};
+
+    if (dragMode === 'move' || dragMode === null){
+      next.x = start.crop.x + dx;
+      next.y = start.crop.y + dy;
+      setCrop(next);
+      draw();
+      return;
+    }
+
+    // Aspect ratio lock? Shift or a "crop to output" lock when resizing
+    const wantAspect = shiftLock || false;
+    const targetAspect = getOutAspect();
+
+    // Resizing logic: work in LTRB for easier clamping
+    let L = start.crop.x, T = start.crop.y, R = start.crop.x + start.crop.w, B = start.crop.y + start.crop.h;
+
+    function applyAspectFrom(anchor){
+      // maintain aspect by adjusting one side based on others
+      const w = R - L, h = B - T;
+      if (w < minCrop || h < minCrop) return;
+      const cur = w / h;
+      if (Math.abs(cur - targetAspect) < 1e-6) return;
+      if (cur > targetAspect){
+        // too wide -> adjust width
+        const newW = h * targetAspect;
+        if (anchor.includes('w')) R = L + newW; else L = R - newW;
+      } else {
+        // too tall -> adjust height
+        const newH = w / targetAspect;
+        if (anchor.includes('n')) B = T + newH; else T = B - newH;
+      }
+    }
+
+    switch(dragMode){
+      case 'n': T = start.crop.y + dy; if (wantAspect) applyAspectFrom('n'); break;
+      case 's': B = start.crop.y + start.crop.h + dy; if (wantAspect) applyAspectFrom('s'); break;
+      case 'w': L = start.crop.x + dx; if (wantAspect) applyAspectFrom('w'); break;
+      case 'e': R = start.crop.x + start.crop.w + dx; if (wantAspect) applyAspectFrom('e'); break;
+      case 'nw': L = start.crop.x + dx; T = start.crop.y + dy; if (wantAspect) applyAspectFrom('nw'); break;
+      case 'ne': R = start.crop.x + start.crop.w + dx; T = start.crop.y + dy; if (wantAspect) applyAspectFrom('ne'); break;
+      case 'sw': L = start.crop.x + dx; B = start.crop.y + start.crop.h + dy; if (wantAspect) applyAspectFrom('sw'); break;
+      case 'se': R = start.crop.x + start.crop.w + dx; B = start.crop.y + start.crop.h + dy; if (wantAspect) applyAspectFrom('se'); break;
+    }
+
+    // Normalize and clamp
+    let x = Math.min(L, R), y = Math.min(T, B);
+    let w = Math.max(minCrop, Math.abs(R - L)), h = Math.max(minCrop, Math.abs(B - T));
+
+    // Clamp to image bounds
+    if (x < 0){ w -= (0 - x); x = 0; }
+    if (y < 0){ h -= (0 - y); y = 0; }
+    if (x + w > srcW){ w = srcW - x; }
+    if (y + h > srcH){ h = srcH - y; }
+
+    setCrop({x,y,w,h});
+    draw();
+  }
+  function onPointerUp(e){
+    if (!isPointerDown) return;
+    isPointerDown = false;
+    dragMode = null;
+    view.releasePointerCapture(e.pointerId);
+    debouncedEstimate();
+  }
+
+  // Keyboard: move/resize
+  function onKeyDown(e){
+    if (!srcCanvas) return;
+    let used = false;
+    const step = e.shiftKey ? 10 : 1;
+    if (e.key === 'ArrowLeft'){
+      if (e.ctrlKey || e.metaKey || e.altKey){
+        crop.w = Math.max(minCrop, crop.w - step);
+      } else {
+        crop.x = Math.max(0, crop.x - step);
+      }
+      used = true;
+    } else if (e.key === 'ArrowRight'){
+      if (e.ctrlKey || e.metaKey || e.altKey){
+        crop.w = Math.min(srcW - crop.x, crop.w + step);
+      } else {
+        crop.x = Math.min(srcW - crop.w, crop.x + step);
+      }
+      used = true;
+    } else if (e.key === 'ArrowUp'){
+      if (e.ctrlKey || e.metaKey || e.altKey){
+        crop.h = Math.max(minCrop, crop.h - step);
+      } else {
+        crop.y = Math.max(0, crop.y - step);
+      }
+      used = true;
+    } else if (e.key === 'ArrowDown'){
+      if (e.ctrlKey || e.metaKey || e.altKey){
+        crop.h = Math.min(srcH - crop.y, crop.h + step);
+      } else {
+        crop.y = Math.min(srcH - crop.h, crop.y + step);
+      }
+      used = true;
+    } else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'v'){
+      // allow paste
+      // handled elsewhere
+    }
+    if (used){
+      e.preventDefault();
+      setCrop(crop);
+      draw();
+      debouncedEstimate();
+    }
+  }
+
+  // IO: drag & drop & paste
+  function isImageFile(item){
+    return item && item.type && item.type.startsWith('image/');
+  }
+
+  function setupDropZone(el){
+    el.addEventListener('dragover', e => {
+      e.preventDefault();
+      el.classList.add('dragover');
+    });
+    el.addEventListener('dragleave', () => el.classList.remove('dragover'));
+    el.addEventListener('drop', e => {
+      e.preventDefault();
+      el.classList.remove('dragover');
+      const dt = e.dataTransfer;
+      if (dt && dt.files && dt.files.length){
+        const f = Array.from(dt.files).find(f => isImageFile(f));
+        if (f) loadFile(f);
+      }
+    });
+  }
+
+  async function pasteFromClipboard(){
+    try {
+      const items = await navigator.clipboard.read();
+      for (const it of items){
+        for (const type of it.types){
+          if (type.startsWith('image/')){
+            const blob = await it.getType(type);
+            await loadFile(blob);
+            return;
+          }
+        }
+      }
+      alert('No image found on clipboard.');
+    } catch (err){
+      console.warn('Clipboard read failed:', err);
+      alert('Clipboard read failed. Try pressing Ctrl/Cmd+V here after copying an image.');
+    }
+  }
+
+  // Resize handling
+  function onResize(){
+    computeView();
+    draw();
+  }
+
+  // Event wiring
+  view.addEventListener('pointerdown', onPointerDown);
+  view.addEventListener('pointermove', onPointerMove);
+  view.addEventListener('pointerup', onPointerUp);
+  view.addEventListener('pointercancel', onPointerUp);
+  window.addEventListener('keydown', onKeyDown);
+
+  window.addEventListener('resize', onResize);
+
+  fileInput.addEventListener('change', e => {
+    if (fileInput.files && fileInput.files[0]) loadFile(fileInput.files[0]);
+    fileInput.value = ''; // reset for re-upload same file
+  });
+
+  btnPaste.addEventListener('click', pasteFromClipboard);
+  window.addEventListener('paste', async e => {
+    if (e.clipboardData && e.clipboardData.files && e.clipboardData.files.length){
+      const f = Array.from(e.clipboardData.files).find(isImageFile);
+      if (f) {
+        e.preventDefault();
+        await loadFile(f);
+        return;
+      }
+    }
+    // Try async clipboard if available
+    // (will be blocked unless triggered by user gesture)
+  });
+
+  setupDropZone(drop);
+  setupDropZone(drop2);
+
+  btnReset.addEventListener('click', () => {
+    if (!srcCanvas) return;
+    setCrop({x:0,y:0,w:srcW,h:srcH});
+    draw();
+    debouncedEstimate();
+  });
+
+  btnRotCCW.addEventListener('click', () => transformSource('rotCCW'));
+  btnRotCW.addEventListener('click', () => transformSource('rotCW'));
+  btnFlipH.addEventListener('click', () => transformSource('flipH'));
+  btnFlipV.addEventListener('click', () => transformSource('flipV'));
+
+  outWEl.addEventListener('change', () => setOutW(+outWEl.value));
+  outHEl.addEventListener('change', () => setOutH(+outHEl.value));
+  outWEl.addEventListener('input', () => debouncedEstimate());
+  outHEl.addEventListener('input', () => debouncedEstimate());
+  lockOutAspectEl.addEventListener('change', () => {
+    // When locking, synchronize dimensions to closest ratio from current
+    if (lockOutAspectEl.checked){
+      const r = (+outWEl.value) / (+outHEl.value || 1);
+      outHEl.value = Math.max(1, Math.round(+outWEl.value / r));
+    }
+    debouncedEstimate();
+  });
+
+  btnOutFromCrop.addEventListener('click', outputFromCrop);
+  btnCropToOut.addEventListener('click', cropToOutputAspect);
+
+  qualityEl.addEventListener('input', () => {
+    qLabel.textContent = (+qualityEl.value).toFixed(2);
+    debouncedEstimate();
+  });
+
+  bgEl.addEventListener('input', debouncedEstimate);
+  fillBgEl.addEventListener('change', debouncedEstimate);
+  btnPreview.addEventListener('click', updateEstimate);
+  btnCopy.addEventListener('click', doCopy);
+  btnDownload.addEventListener('click', doDownload);
+
+  // Initialize view
+  computeView();
+  draw();
+
+})();
+</script>
+</body>
+</html>
