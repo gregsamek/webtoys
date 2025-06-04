@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Image Palette Extractor (Canvas + k-means)</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #151822;
+      --panel-2: #1b2030;
+      --text: #e4e7ef;
+      --muted: #a7afc0;
+      --accent: #6aa9ff;
+      --accent-2: #4dd0b5;
+      --border: #232838;
+      --swatch-border: rgba(255,255,255,0.2);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font: 14px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    .wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    header h1 { font-size: 18px; margin: 0; font-weight: 600; letter-spacing: 0.2px; }
+    header .hint { color: var(--muted); font-size: 12px; }
+
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+    }
+    .controls-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+    .control {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--panel-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .control label { color: var(--muted); font-size: 12px; }
+    .control input[type="range"] { width: 140px; }
+    .control input[type="number"] { width: 66px; background: transparent; border: 1px solid var(--border); color: var(--text); border-radius: 6px; padding: 6px; }
+    .control input[type="checkbox"] { transform: translateY(1px); }
+    .btn {
+      appearance: none; border: 1px solid var(--border); background: #21283a; color: var(--text);
+      padding: 8px 12px; border-radius: 8px; cursor: pointer; font-weight: 600;
+    }
+    .btn:hover { background: #263148; }
+    .btn:active { transform: translateY(1px); }
+    .btn.secondary { background: #1a2030; }
+    .btn.accent { background: #2a3962; border-color: #2f4478; }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+    @media (max-width: 980px) {
+      .workspace { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      min-height: 200px;
+    }
+
+    #dropzone {
+      border: 2px dashed #2e3750; border-radius: 10px;
+      padding: 16px; text-align: center; color: var(--muted);
+      transition: border-color .15s ease, background .15s ease;
+      cursor: pointer;
+      margin-bottom: 8px;
+    }
+    #dropzone.dragover { border-color: var(--accent); background: rgba(106,169,255,0.08); }
+    #fileInput { display: none; }
+    .small { font-size: 12px; color: var(--muted); }
+
+    .canvas-wrap {
+      position: relative;
+      background: #0c0e13;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    canvas { display: block; width: 100%; height: auto; image-rendering: crisp-edges; }
+
+    .palette {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
+    .swatch {
+      background: #22283a;
+      border: 1px solid var(--swatch-border);
+      border-radius: 8px;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 56px auto;
+    }
+    .swatch-color { height: 56px; border-bottom: 1px solid var(--swatch-border); }
+    .swatch-info { padding: 8px; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+    .tag { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; padding: 3px 6px; background: #0f1320; border: 1px solid var(--border); border-radius: 6px; cursor: copy; }
+    .pct { color: var(--muted); font-size: 12px; }
+
+    .stack { display: grid; gap: 8px; }
+    .row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .muted { color: var(--muted); }
+
+    .legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Image Palette Extractor (Canvas + k-means)</h1>
+      <div class="hint">Drop an image, choose k, extract colors</div>
+    </header>
+
+    <section class="controls">
+      <div class="controls-row">
+        <div id="dropzone" tabindex="0" aria-label="Drop image here or click to choose">
+          <strong>Drop image</strong> or click to choose…
+          <div class="small">PNG, JPG, GIF, WebP • processed entirely in your browser</div>
+          <input id="fileInput" type="file" accept="image/*" />
+        </div>
+      </div>
+
+      <div class="controls-row">
+        <div class="control">
+          <label for="kRange">k (colors)</label>
+          <input id="kRange" type="range" min="2" max="12" value="6" />
+          <input id="kNum" type="number" min="2" max="12" value="6" />
+        </div>
+        <div class="control">
+          <label for="maxDim">Max size</label>
+          <input id="maxDim" type="number" value="800" min="128" max="4096" step="16" />
+          <span class="small">px</span>
+        </div>
+        <div class="control">
+          <label for="sampleStep">Sample step</label>
+          <input id="sampleStep" type="range" min="1" max="8" value="2" />
+          <span id="sampleStepVal" class="small">2</span>
+        </div>
+        <div class="control">
+          <label for="alphaThresh">Ignore alpha ≤</label>
+          <input id="alphaThresh" type="range" min="0" max="255" value="16" />
+          <span id="alphaVal" class="small">16</span>
+        </div>
+        <div class="control">
+          <input id="useLab" type="checkbox" checked />
+          <label for="useLab">Use CIE Lab space</label>
+        </div>
+        <div class="control">
+          <input id="liveUpdate" type="checkbox" />
+          <label for="liveUpdate">Auto update</label>
+        </div>
+        <button id="btnExtract" class="btn accent">Extract palette</button>
+        <button id="btnQuant" class="btn">Toggle quantized preview</button>
+      </div>
+
+      <div class="legend">
+        <div>Tip: Increase sample step for speed, lower it for accuracy.</div>
+        <div>Lab clustering often yields nicer palettes than RGB.</div>
+      </div>
+    </section>
+
+    <section class="workspace">
+      <div class="panel">
+        <div class="stack">
+          <div class="row">
+            <div class="muted">Source image</div>
+            <div class="small" id="imgMeta"></div>
+          </div>
+          <div class="canvas-wrap">
+            <canvas id="canvas" width="0" height="0" aria-label="Source image canvas"></canvas>
+          </div>
+
+          <div id="quantWrap" class="canvas-wrap hidden">
+            <canvas id="quantCanvas" width="0" height="0" aria-label="Quantized image preview"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="stack">
+          <div class="row">
+            <div class="muted">Extracted palette</div>
+            <div class="small" id="stats"></div>
+          </div>
+          <div id="palette" class="palette"></div>
+          <div class="row">
+            <button id="copyAll" class="btn secondary">Copy HEX list</button>
+            <div id="copyToast" class="small muted"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Utilities: Color conversion (sRGB <-> Lab), k-means, helpers
+    // sRGB [0..255] -> Linear [0..1]
+    function srgbToLinear(c) {
+      c = c / 255;
+      return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    }
+    // Linear [0..1] -> sRGB [0..255]
+    function linearToSrgb(c) {
+      const v = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1/2.4) - 0.055;
+      return Math.max(0, Math.min(255, Math.round(v * 255)));
+    }
+    // RGB -> XYZ (D65)
+    function rgbToXyz(r8, g8, b8) {
+      const r = srgbToLinear(r8), g = srgbToLinear(g8), b = srgbToLinear(b8);
+      const x = r * 0.4124564 + g * 0.3575761 + b * 0.1804375;
+      const y = r * 0.2126729 + g * 0.7151522 + b * 0.0721750;
+      const z = r * 0.0193339 + g * 0.1191920 + b * 0.9503041;
+      return [x, y, z];
+    }
+    // XYZ -> Lab (D65)
+    function xyzToLab(x, y, z) {
+      const Xn = 0.95047, Yn = 1.00000, Zn = 1.08883;
+      const fx = fxyz(x / Xn), fy = fxyz(y / Yn), fz = fxyz(z / Zn);
+      const L = 116 * fy - 16;
+      const a = 500 * (fx - fy);
+      const b = 200 * (fy - fz);
+      return [L, a, b];
+    }
+    function fxyz(t) {
+      const d = 6/29;
+      return t > Math.pow(d,3) ? Math.cbrt(t) : (t / (3 * d * d) + 4/29);
+    }
+    // Lab -> XYZ (D65)
+    function labToXyz(L, a, b) {
+      const fy = (L + 16) / 116;
+      const fx = fy + a / 500;
+      const fz = fy - b / 200;
+
+      const Xn = 0.95047, Yn = 1.00000, Zn = 1.08883;
+      const xr = finv(fx), yr = finv(fy), zr = finv(fz);
+
+      const x = xr * Xn, y = yr * Yn, z = zr * Zn;
+      return [x, y, z];
+    }
+    function finv(f) {
+      const d = 6/29;
+      return f > d ? f*f*f : 3 * d * d * (f - 4/29);
+    }
+    // XYZ -> RGB (sRGB)
+    function xyzToRgb(x, y, z) {
+      // Inverse sRGB matrix
+      let rl = x *  3.2404542 + y * -1.5371385 + z * -0.4985314;
+      let gl = x * -0.9692660 + y *  1.8760108 + z *  0.0415560;
+      let bl = x *  0.0556434 + y * -0.2040259 + z *  1.0572252;
+      // Clamp linear domain before gamma to avoid NaN
+      rl = Math.min(1, Math.max(0, rl));
+      gl = Math.min(1, Math.max(0, gl));
+      bl = Math.min(1, Math.max(0, bl));
+      return [ linearToSrgb(rl), linearToSrgb(gl), linearToSrgb(bl) ];
+    }
+    function rgbToLab(r, g, b) {
+      const [x, y, z] = rgbToXyz(r, g, b);
+      return xyzToLab(x, y, z);
+    }
+    function labToRgb(L, a, b) {
+      const [x, y, z] = labToXyz(L, a, b);
+      return xyzToRgb(x, y, z);
+    }
+    function rgbToHex(r, g, b) {
+      const toHex = v => v.toString(16).padStart(2, '0');
+      return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+    }
+
+    // K-means++ seeding
+    function kmeansPlusPlus(points, k, dist2) {
+      const n = points.length;
+      const centers = [];
+      const used = new Set();
+      const pickIndex = (i) => i;
+
+      let i0 = Math.floor(Math.random() * n);
+      centers.push(points[i0]);
+
+      const d2 = new Float64Array(n).fill(Infinity);
+
+      while (centers.length < k) {
+        for (let i = 0; i < n; i++) {
+          const p = points[i];
+          let best = d2[i];
+          for (let c = 0; c < centers.length; c++) {
+            const dd = dist2(p, centers[c]);
+            if (dd < best) best = dd;
+          }
+          d2[i] = best;
+        }
+        let sum = 0;
+        for (let i = 0; i < n; i++) sum += d2[i];
+        if (sum === 0) {
+          // All points identical; fill remaining with same point
+          while (centers.length < k) centers.push(points[0]);
+          break;
+        }
+        let r = Math.random() * sum;
+        let idx = 0;
+        for (; idx < n - 1; idx++) {
+          r -= d2[idx];
+          if (r <= 0) break;
+        }
+        centers.push(points[idx]);
+      }
+      return centers.map(c => c.slice());
+    }
+
+    // K-means core
+    function kmeans(points, k, { maxIter = 25, dist = 'lab' } = {}) {
+      const n = points.length;
+      if (n === 0) return { centers: [], assignments: [], counts: [] };
+
+      const isLab = dist === 'lab';
+      const dist2 = (a, b) => {
+        let dx = a[0]-b[0], dy = a[1]-b[1], dz = a[2]-b[2];
+        return dx*dx + dy*dy + dz*dz;
+      };
+
+      let centers = kmeansPlusPlus(points, Math.min(k, n), dist2);
+      const assignments = new Int32Array(n);
+      const counts = new Int32Array(k);
+
+      for (let iter = 0; iter < maxIter; iter++) {
+        let moved = 0;
+        // Assign
+        for (let i = 0; i < n; i++) {
+          const p = points[i];
+          let bestJ = 0, bestD = Infinity;
+          for (let j = 0; j < centers.length; j++) {
+            const d = dist2(p, centers[j]);
+            if (d < bestD) { bestD = d; bestJ = j; }
+          }
+          if (assignments[i] !== bestJ) {
+            moved++;
+            assignments[i] = bestJ;
+          }
+        }
+        // Recompute
+        const acc = Array.from({ length: centers.length }, () => [0,0,0]);
+        counts.fill(0);
+        for (let i = 0; i < n; i++) {
+          const j = assignments[i];
+          const p = points[i];
+          acc[j][0] += p[0];
+          acc[j][1] += p[1];
+          acc[j][2] += p[2];
+          counts[j]++;
+        }
+        for (let j = 0; j < centers.length; j++) {
+          if (counts[j] === 0) {
+            // Re-seed empty cluster with random point
+            centers[j] = points[Math.floor(Math.random()*n)].slice();
+          } else {
+            centers[j][0] = acc[j][0] / counts[j];
+            centers[j][1] = acc[j][1] / counts[j];
+            centers[j][2] = acc[j][2] / counts[j];
+          }
+        }
+        if (moved === 0) break;
+      }
+      return { centers, assignments, counts: Array.from(counts) };
+    }
+
+    // DOM elements
+    const els = {
+      dropzone: document.getElementById('dropzone'),
+      fileInput: document.getElementById('fileInput'),
+      canvas: document.getElementById('canvas'),
+      quantWrap: document.getElementById('quantWrap'),
+      quantCanvas: document.getElementById('quantCanvas'),
+      kRange: document.getElementById('kRange'),
+      kNum: document.getElementById('kNum'),
+      maxDim: document.getElementById('maxDim'),
+      sampleStep: document.getElementById('sampleStep'),
+      sampleStepVal: document.getElementById('sampleStepVal'),
+      alphaThresh: document.getElementById('alphaThresh'),
+      alphaVal: document.getElementById('alphaVal'),
+      useLab: document.getElementById('useLab'),
+      liveUpdate: document.getElementById('liveUpdate'),
+      btnExtract: document.getElementById('btnExtract'),
+      btnQuant: document.getElementById('btnQuant'),
+      palette: document.getElementById('palette'),
+      stats: document.getElementById('stats'),
+      imgMeta: document.getElementById('imgMeta'),
+      copyAll: document.getElementById('copyAll'),
+      copyToast: document.getElementById('copyToast'),
+    };
+
+    let imgBitmap = null;
+    let imgNatural = { w: 0, h: 0 };
+    let lastPalette = null;
+
+    function setToast(msg, ms = 1200) {
+      els.copyToast.textContent = msg;
+      if (ms) {
+        setTimeout(() => {
+          if (els.copyToast.textContent === msg) els.copyToast.textContent = '';
+        }, ms);
+      }
+    }
+
+    function humanPixels(n) {
+      if (n < 1000) return `${n}`;
+      if (n < 1e6) return `${(n/1e3).toFixed(1)}k`;
+      return `${(n/1e6).toFixed(2)}M`;
+    }
+
+    function clearCanvas(canv) {
+      const ctx = canv.getContext('2d');
+      ctx.clearRect(0, 0, canv.width, canv.height);
+    }
+
+    async function loadImageFromFile(file) {
+      const url = URL.createObjectURL(file);
+      try {
+        const img = await createImageBitmap(file);
+        imgBitmap = img;
+        imgNatural.w = img.width;
+        imgNatural.h = img.height;
+        drawImageScaled();
+        els.imgMeta.textContent = `${img.width}×${img.height}`;
+        if (els.liveUpdate.checked) extractPalette();
+      } catch (e) {
+        console.error(e);
+        setToast('Failed to load image');
+      } finally {
+        URL.revokeObjectURL(url);
+      }
+    }
+
+    function drawImageScaled() {
+      if (!imgBitmap) return;
+      const maxDim = parseInt(els.maxDim.value, 10) || 800;
+      const { width: iw, height: ih } = imgBitmap;
+      const scale = Math.min(1, maxDim / Math.max(iw, ih));
+      const w = Math.max(1, Math.round(iw * scale));
+      const h = Math.max(1, Math.round(ih * scale));
+      const c = els.canvas;
+      c.width = w; c.height = h;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(imgBitmap, 0, 0, w, h);
+
+      // Reset quant preview
+      els.quantCanvas.width = w;
+      els.quantCanvas.height = h;
+      clearCanvas(els.quantCanvas);
+    }
+
+    function samplePixels({ step = 2, alphaThresh = 16 } = {}) {
+      const c = els.canvas;
+      const ctx = c.getContext('2d', { willReadFrequently: true });
+      const { width: w, height: h } = c;
+      if (w === 0 || h === 0) return { samples: [], rgbSamples: [], total: 0 };
+      const data = ctx.getImageData(0, 0, w, h).data;
+      const samples = [];      // Lab or RGB depending on mode
+      const rgbSamples = [];   // Always keep RGB for preview/hex
+      let count = 0;
+
+      const useLab = els.useLab.checked;
+
+      for (let y = 0; y < h; y += step) {
+        for (let x = 0; x < w; x += step) {
+          const idx = (y * w + x) * 4;
+          const r = data[idx], g = data[idx+1], b = data[idx+2], a = data[idx+3];
+          if (a <= alphaThresh) continue;
+          if (useLab) {
+            samples.push(rgbToLab(r, g, b));
+          } else {
+            samples.push([r, g, b]);
+          }
+          rgbSamples.push([r, g, b]);
+          count++;
+        }
+      }
+      return { samples, rgbSamples, total: count, w, h, data };
+    }
+
+    function extractPalette() {
+      if (!imgBitmap) {
+        setToast('Load an image first');
+        return;
+      }
+      const k = clamp(parseInt(els.kNum.value, 10) || parseInt(els.kRange.value, 10), 2, 12);
+      els.kRange.value = k; els.kNum.value = k;
+
+      const step = parseInt(els.sampleStep.value, 10) || 2;
+      const alphaT = parseInt(els.alphaThresh.value, 10) || 0;
+
+      const t0 = performance.now();
+      const { samples, rgbSamples, total, w, h, data } = samplePixels({ step, alphaThresh: alphaT });
+      if (samples.length === 0) {
+        setToast('No opaque pixels to sample');
+        els.palette.innerHTML = '';
+        els.stats.textContent = '';
+        lastPalette = null;
+        return;
+      }
+
+      const mode = els.useLab.checked ? 'lab' : 'rgb';
+      const { centers, assignments, counts } = kmeans(samples, k, { maxIter: 25, dist: mode });
+
+      // Convert centers to RGB for display and quantization
+      const centersRgb = centers.map(c => {
+        if (mode === 'lab') {
+          const [r,g,b] = labToRgb(c[0], c[1], c[2]);
+          return [r, g, b];
+        } else {
+          // Already RGB (but floats), clamp and round
+          return [ clamp(Math.round(c[0]),0,255), clamp(Math.round(c[1]),0,255), clamp(Math.round(c[2]),0,255) ];
+        }
+      });
+
+      // Sort clusters by size desc
+      const order = centersRgb.map((_, i) => i).sort((a,b) => (counts[b]||0) - (counts[a]||0));
+      const sorted = order.map(i => ({
+        idx: i,
+        rgb: centersRgb[i].map(v => clamp(Math.round(v), 0, 255)),
+        count: counts[i] || 0
+      }));
+
+      const elapsed = performance.now() - t0;
+      renderPalette(sorted, total);
+      els.stats.textContent = `k=${k} • sampled ${humanPixels(total)} px • ${elapsed.toFixed(0)} ms`;
+
+      lastPalette = { centersRgb, assignments, counts, order, mode, step, alphaT };
+
+      // If quant preview visible, update it
+      if (!els.quantWrap.classList.contains('hidden')) {
+        quantizePreview(sorted);
+      }
+    }
+
+    function renderPalette(entries, total) {
+      const container = els.palette;
+      container.innerHTML = '';
+      const hexList = [];
+
+      for (const e of entries) {
+        const [r,g,b] = e.rgb;
+        const hex = rgbToHex(r,g,b);
+        hexList.push(hex);
+        const pct = total > 0 ? ((e.count / total) * 100) : 0;
+
+        const sw = document.createElement('div');
+        sw.className = 'swatch';
+        const cdiv = document.createElement('div');
+        cdiv.className = 'swatch-color';
+        cdiv.style.background = hex;
+
+        const info = document.createElement('div');
+        info.className = 'swatch-info';
+
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = hex;
+        tag.title = 'Click to copy';
+        tag.tabIndex = 0;
+        tag.addEventListener('click', () => copyToClipboard(hex));
+
+        const pctEl = document.createElement('span');
+        pctEl.className = 'pct';
+        pctEl.textContent = `${pct.toFixed(1)}%`;
+
+        info.appendChild(tag);
+        info.appendChild(pctEl);
+        sw.appendChild(cdiv);
+        sw.appendChild(info);
+        container.appendChild(sw);
+      }
+
+      els.copyAll.onclick = () => {
+        copyToClipboard(hexList.join('\n'));
+      };
+    }
+
+    function quantizePreview(sortedCenters) {
+      if (!imgBitmap || !sortedCenters || sortedCenters.length === 0) return;
+      const src = els.canvas;
+      const ctx = src.getContext('2d', { willReadFrequently: true });
+      const { width: w, height: h } = src;
+      if (w === 0 || h === 0) return;
+      const imgData = ctx.getImageData(0, 0, w, h);
+      const d = imgData.data;
+
+      // Prepare Lab centers if using Lab distance for quantization, else RGB
+      const useLab = els.useLab.checked;
+      const centers = sortedCenters.map(e => {
+        const [r,g,b] = e.rgb;
+        return useLab ? rgbToLab(r,g,b) : [r,g,b];
+      });
+
+      const out = new ImageData(w, h);
+      const od = out.data;
+
+      for (let i = 0; i < d.length; i += 4) {
+        const a = d[i+3];
+        if (a <= parseInt(els.alphaThresh.value, 10)) {
+          od[i] = 0; od[i+1] = 0; od[i+2] = 0; od[i+3] = 0;
+          continue;
+        }
+        const r = d[i], g = d[i+1], b = d[i+2];
+        const p = useLab ? rgbToLab(r,g,b) : [r,g,b];
+        let bestJ = 0, bestD = Infinity;
+        for (let j = 0; j < centers.length; j++) {
+          const c = centers[j];
+          const dx = p[0]-c[0], dy = p[1]-c[1], dz = p[2]-c[2];
+          const dist = dx*dx + dy*dy + dz*dz;
+          if (dist < bestD) { bestD = dist; bestJ = j; }
+        }
+        const [qr,qg,qb] = sortedCenters[bestJ].rgb;
+        od[i] = qr; od[i+1] = qg; od[i+2] = qb; od[i+3] = a;
+      }
+
+      const qctx = els.quantCanvas.getContext('2d');
+      qctx.putImageData(out, 0, 0);
+    }
+
+    // Helpers
+    function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+    async function copyToClipboard(text) {
+      try {
+        await navigator.clipboard.writeText(text);
+        setToast('Copied to clipboard');
+      } catch {
+        // Fallback
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); setToast('Copied to clipboard'); }
+        catch { setToast('Copy failed'); }
+        finally { document.body.removeChild(ta); }
+      }
+    }
+
+    // Events: file input, drag & drop, controls changes
+    els.dropzone.addEventListener('click', () => els.fileInput.click());
+    els.dropzone.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); els.fileInput.click(); }
+    });
+    els.fileInput.addEventListener('change', async (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (file) await loadImageFromFile(file);
+    });
+
+    ;['dragenter','dragover'].forEach(type => {
+      els.dropzone.addEventListener(type, e => {
+        e.preventDefault(); e.stopPropagation();
+        els.dropzone.classList.add('dragover');
+      });
+    });
+    ;['dragleave','drop'].forEach(type => {
+      els.dropzone.addEventListener(type, e => {
+        e.preventDefault(); e.stopPropagation();
+        els.dropzone.classList.remove('dragover');
+      });
+    });
+    els.dropzone.addEventListener('drop', async (e) => {
+      const file = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) {
+        await loadImageFromFile(file);
+      }
+    });
+
+    // Sync k controls
+    function syncK(from) {
+      const v = clamp(parseInt(from.value, 10) || 6, 2, 12);
+      els.kRange.value = v; els.kNum.value = v;
+      if (els.liveUpdate.checked) extractPalette();
+    }
+    els.kRange.addEventListener('input', (e) => syncK(e.target));
+    els.kNum.addEventListener('input', (e) => syncK(e.target));
+
+    // Sample step, alpha, Lab toggle
+    els.sampleStep.addEventListener('input', (e) => {
+      els.sampleStepVal.textContent = e.target.value;
+      if (els.liveUpdate.checked) extractPalette();
+    });
+    els.alphaThresh.addEventListener('input', (e) => {
+      els.alphaVal.textContent = e.target.value;
+      if (els.liveUpdate.checked) extractPalette();
+    });
+    els.useLab.addEventListener('change', () => {
+      if (els.liveUpdate.checked) extractPalette();
+    });
+    els.maxDim.addEventListener('change', () => {
+      if (!imgBitmap) return;
+      drawImageScaled();
+      if (els.liveUpdate.checked) extractPalette();
+    });
+
+    els.btnExtract.addEventListener('click', extractPalette);
+
+    els.btnQuant.addEventListener('click', () => {
+      const wrap = els.quantWrap;
+      const show = wrap.classList.contains('hidden');
+      if (show) {
+        wrap.classList.remove('hidden');
+        if (lastPalette) {
+          const k = clamp(parseInt(els.kNum.value, 10) || parseInt(els.kRange.value, 10), 2, 12);
+          // Build sorted centers similar to last extraction if possible
+          const { centersRgb, counts } = lastPalette || {};
+          if (centersRgb) {
+            const entries = centersRgb.map((rgb, i) => ({ rgb: rgb.map(v => clamp(Math.round(v),0,255)), count: counts[i] || 0 }));
+            const sorted = entries.sort((a,b) => b.count - a.count);
+            quantizePreview(sorted);
+          } else {
+            extractPalette();
+          }
+        } else {
+          extractPalette();
+        }
+      } else {
+        wrap.classList.add('hidden');
+      }
+    });
+
+    // Keyboard shortcut: E to extract, Q to toggle quant preview
+    window.addEventListener('keydown', (e) => {
+      if (e.target && ['INPUT','TEXTAREA'].includes(e.target.tagName)) return;
+      if (e.key.toLowerCase() === 'e') { e.preventDefault(); extractPalette(); }
+      if (e.key.toLowerCase() === 'q') { e.preventDefault(); els.btnQuant.click(); }
+    });
+
+    // Initial UI sync
+    els.sampleStepVal.textContent = els.sampleStep.value;
+    els.alphaVal.textContent = els.alphaThresh.value;
+
+    // Friendly defaults: set a placeholder canvas background
+    (function initCanvasPlaceholders(){
+      const c = els.canvas;
+      c.width = 640; c.height = 360;
+      const ctx = c.getContext('2d');
+      const g = ctx.createLinearGradient(0,0,0,c.height);
+      g.addColorStop(0, '#151a28');
+      g.addColorStop(1, '#0f1320');
+      ctx.fillStyle = g;
+      ctx.fillRect(0,0,c.width,c.height);
+      ctx.fillStyle = '#93a2c8';
+      ctx.font = '600 14px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif';
+      ctx.fillText('Drop an image above to begin', 16, 28);
+      ctx.fillStyle = '#66759c';
+      ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto, Inter, Arial, sans-serif';
+      ctx.fillText('Then choose k and click Extract palette', 16, 48);
+    })();
+  </script>
+</body>
+</html>
