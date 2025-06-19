@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>QR Code Generator (Single-file, no dependencies)</title>
+<style>
+  :root {
+    color-scheme: light dark;
+  }
+  body {
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+    margin: 0;
+    padding: 0;
+    background: Canvas;
+    color: CanvasText;
+  }
+  header {
+    padding: 16px 20px;
+    border-bottom: 1px solid color-mix(in oklab, CanvasText 12%, transparent);
+  }
+  main {
+    display: grid;
+    gap: 16px;
+    padding: 16px;
+    grid-template-columns: 320px minmax(260px, 1fr);
+  }
+  @media (max-width: 800px) {
+    main { grid-template-columns: 1fr; }
+  }
+  .panel {
+    border: 1px solid color-mix(in oklab, CanvasText 12%, transparent);
+    border-radius: 10px;
+    padding: 12px;
+    background: color-mix(in oklab, Canvas 94%, CanvasText 0%);
+  }
+  .panel h2 {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+  }
+  .field {
+    display: grid;
+    gap: 6px;
+    margin: 10px 0 14px 0;
+  }
+  label {
+    font-size: 13px;
+    opacity: 0.8;
+  }
+  textarea, input[type="text"] {
+    width: 100%;
+    box-sizing: border-box;
+    font: inherit;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in oklab, CanvasText 20%, transparent);
+    border-radius: 8px;
+    background: Canvas;
+    color: CanvasText;
+    resize: vertical;
+    min-height: 84px;
+  }
+  input[type="number"], select {
+    font: inherit;
+    padding: 8px 10px;
+    border: 1px solid color-mix(in oklab, CanvasText 20%, transparent);
+    border-radius: 8px;
+    background: Canvas;
+    color: CanvasText;
+  }
+  input[type="range"] {
+    width: 100%;
+  }
+  .row {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .row > * {
+    flex: 1 1 auto;
+  }
+  .buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  button {
+    font: inherit;
+    padding: 8px 12px;
+    border: 1px solid color-mix(in oklab, CanvasText 20%, transparent);
+    border-radius: 8px;
+    background: color-mix(in oklab, Canvas 96%, CanvasText 0%);
+    color: CanvasText;
+    cursor: pointer;
+  }
+  button.primary {
+    background: color-mix(in oklab, Highlight 36%, Canvas 70%);
+    color: ButtonText;
+    border-color: color-mix(in oklab, Highlight 50%, CanvasText 0%);
+  }
+  button:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+  .muted {
+    opacity: 0.7;
+    font-size: 12px;
+  }
+  .error {
+    color: #b00020;
+    font-size: 13px;
+  }
+  .preview {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    place-items: start start;
+  }
+  canvas, svg {
+    image-rendering: pixelated;
+    border-radius: 8px;
+    box-shadow: 0 0 0 1px color-mix(in oklab, CanvasText 10%, transparent) inset;
+    background: white;
+  }
+  .optline {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    gap: 10px;
+  }
+  .notice {
+    font-size: 12px;
+    opacity: 0.75;
+  }
+  .capsule {
+    display: inline-flex;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 999px;
+    background: color-mix(in oklab, CanvasText 6%, transparent);
+    align-items: center;
+  }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    font-size: 12px;
+    padding: 2px 6px;
+    border-radius: 6px;
+    background: color-mix(in oklab, CanvasText 10%, transparent);
+  }
+</style>
+</head>
+<body>
+  <header>
+    <h1 style="margin:0;font-size:18px;display:flex;align-items:center;gap:8px;">
+      QR Code Generator
+      <span class="capsule">Single HTML · No dependencies</span>
+    </h1>
+    <div class="notice">Note: This compact encoder targets QR Code Version 1 (21×21). Max payload in Byte mode: L=17, M=14, Q=11, H=7 UTF‑8 bytes.</div>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>Content</h2>
+      <div class="field">
+        <label for="text">Text (UTF‑8)</label>
+        <textarea id="text" placeholder="Hello, world!">Hello, world!</textarea>
+        <div class="row" style="justify-content:space-between">
+          <div id="count" class="muted">0 bytes</div>
+          <div id="limit" class="muted"></div>
+        </div>
+        <div id="error" class="error" style="display:none;"></div>
+      </div>
+
+      <h2>Options</h2>
+      <div class="optline">
+        <div class="field">
+          <label for="ecl">Error correction</label>
+          <select id="ecl">
+            <option value="M" selected>M (15%)</option>
+            <option value="L">L (7%)</option>
+            <option value="Q">Q (25%)</option>
+            <option value="H">H (30%)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="mask">Mask</label>
+          <select id="mask">
+            <option value="auto" selected>Auto (best of 0–7)</option>
+            <option value="0">Mask 0</option>
+            <option value="1">Mask 1</option>
+            <option value="2">Mask 2</option>
+            <option value="3">Mask 3</option>
+            <option value="4">Mask 4</option>
+            <option value="5">Mask 5</option>
+            <option value="6">Mask 6</option>
+            <option value="7">Mask 7</option>
+          </select>
+        </div>
+      </div>
+      <div class="optline">
+        <div class="field">
+          <label for="scale">Module scale (px)</label>
+          <input id="scale" type="range" min="2" max="32" step="1" value="10" />
+          <div class="muted" id="scaleLabel">10 px</div>
+        </div>
+        <div class="field">
+          <label for="border">Quiet zone (modules)</label>
+          <input id="border" type="number" min="0" max="20" step="1" value="4" />
+        </div>
+      </div>
+      <div class="buttons">
+        <button id="generate" class="primary">Generate</button>
+        <button id="dlPng">Download PNG</button>
+        <button id="dlSvg">Download SVG</button>
+        <button id="copySvg">Copy SVG</button>
+      </div>
+      <div class="notice" style="margin-top:10px;">
+        Tip: URLs can get long. If your text exceeds Version 1 capacity, shorten it or use a URL shortener.
+      </div>
+    </section>
+
+    <section class="panel preview">
+      <h2 style="margin-bottom:4px;">Preview</h2>
+      <canvas id="canvas" width="21" height="21"></canvas>
+      <div id="svgWrap"></div>
+    </section>
+  </main>
+
+<script>
+/*
+  Minimal QR Code generator for Version 1 only (21x21), Byte mode, all 4 ECLs, auto mask.
+  - No external dependencies
+  - UTF-8 encoding
+  - Implements:
+    * Data encoding (Byte mode)
+    * Reed-Solomon ECC over GF(256) with primitive poly 0x11D
+    * Mask patterns 0..7 and penalty scoring per ISO/IEC 18004
+    * Function patterns, format information BCH (G=0x537) with mask 0x5412
+  Limitations:
+    - Version fixed to 1 (no alignment patterns needed)
+    - Max payload (bytes): L=17, M=14, Q=11, H=7
+*/
+(function(){
+  "use strict";
+
+  const SIZE = 21; // Version 1 symbol
+  const DARK = true, LIGHT = false;
+
+  const ECL = {
+    L: { dataCodewords: 19, ecCodewords: 7,  formatBits: 0b01 },
+    M: { dataCodewords: 16, ecCodewords: 10, formatBits: 0b00 },
+    Q: { dataCodewords: 13, ecCodewords: 13, formatBits: 0b11 },
+    H: { dataCodewords: 9,  ecCodewords: 17, formatBits: 0b10 },
+  };
+  const MAX_BYTES = { // Byte mode payloads (UTF-8 bytes)
+    L: 17, M: 14, Q: 11, H: 7
+  };
+
+  // UTF-8 encode
+  function utf8Bytes(str){
+    const bytes = [];
+    let i = 0;
+    while(i < str.length){
+      let code = str.codePointAt(i);
+      if (code > 0xFFFF) i += 2; else i += 1;
+
+      if (code <= 0x7F) bytes.push(code);
+      else if (code <= 0x7FF) {
+        bytes.push(0xC0 | (code >> 6));
+        bytes.push(0x80 | (code & 0x3F));
+      } else if (code <= 0xFFFF) {
+        bytes.push(0xE0 | (code >> 12));
+        bytes.push(0x80 | ((code >> 6) & 0x3F));
+        bytes.push(0x80 | (code & 0x3F));
+      } else {
+        bytes.push(0xF0 | (code >> 18));
+        bytes.push(0x80 | ((code >> 12) & 0x3F));
+        bytes.push(0x80 | ((code >> 6) & 0x3F));
+        bytes.push(0x80 | (code & 0x3F));
+      }
+    }
+    return bytes;
+  }
+
+  // GF(256)
+  const GF = (function(){
+    const EXP = new Uint8Array(512);
+    const LOG = new Uint8Array(256);
+    let x = 1;
+    for (let i = 0; i < 255; i++){
+      EXP[i] = x;
+      LOG[x] = i;
+      x <<= 1;
+      if (x & 0x100) x ^= 0x11D;
+    }
+    for (let i = 255; i < 512; i++) EXP[i] = EXP[i - 255];
+    function mul(a, b){
+      return (a === 0 || b === 0) ? 0 : EXP[LOG[a] + LOG[b]];
+    }
+    return { EXP, LOG, mul };
+  })();
+
+  // Polynomial multiply (coeffs in GF(256))
+  function polyMul(p, q){
+    const res = new Uint8Array(p.length + q.length - 1);
+    for (let i = 0; i < p.length; i++){
+      const a = p[i];
+      if (a === 0) continue;
+      for (let j = 0; j < q.length; j++){
+        res[i + j] ^= GF.mul(a, q[j]);
+      }
+    }
+    return res;
+  }
+
+  // Build generator polynomial for RS with ecLen parity bytes
+  function rsGenerator(ecLen){
+    let gen = new Uint8Array([1]);
+    for (let i = 0; i < ecLen; i++){
+      const term = new Uint8Array([1, GF.EXP[i]]); // (x - α^i)
+      gen = polyMul(gen, term);
+    }
+    return gen;
+  }
+
+  // Compute RS remainder for message (data bytes) with generator poly
+  function rsRemainder(data, gen){
+    const ecLen = gen.length - 1;
+    const msg = new Uint8Array(data.length + ecLen);
+    msg.set(data, 0);
+    for (let i = 0; i < data.length; i++){
+      const factor = msg[i];
+      if (factor !== 0){
+        for (let j = 0; j < gen.length; j++){
+          msg[i + j] ^= GF.mul(factor, gen[j]);
+        }
+      }
+    }
+    return msg.slice(msg.length - ecLen);
+  }
+
+  // Bit buffer utilities
+  function putBits(buf, value, length){
+    for (let i = length - 1; i >= 0; i--){
+      buf.push((value >>> i) & 1);
+    }
+  }
+  function putByte(buf, b){ putBits(buf, b & 0xFF, 8); }
+
+  // Build final data codewords (Version 1)
+  function buildDataCodewords(bytes, eclKey){
+    const ecl = ECL[eclKey];
+    const maxBytes = MAX_BYTES[eclKey];
+    if (bytes.length > maxBytes) throw new Error(`Too long for Version 1-${eclKey}. Max ${maxBytes} bytes (got ${bytes.length}).`);
+
+    const totalDataCw = ecl.dataCodewords;
+    const capacityBits = totalDataCw * 8;
+    const bits = [];
+
+    // Mode: Byte (0100)
+    putBits(bits, 0b0100, 4);
+    // Length: 8 bits for Version 1..9
+    putBits(bits, bytes.length, 8);
+    // Data
+    for (const b of bytes) putByte(bits, b);
+
+    // Terminator up to 4 bits
+    const remaining = capacityBits - bits.length;
+    putBits(bits, 0, Math.min(4, Math.max(0, remaining)));
+
+    // Pad to byte
+    while (bits.length % 8 !== 0) bits.push(0);
+
+    // Pad codewords 0xEC, 0x11
+    const data = [];
+    for (let i = 0; i < bits.length; i += 8){
+      let v = 0;
+      for (let j = 0; j < 8; j++) v = (v << 1) | bits[i + j];
+      data.push(v);
+    }
+    const padSeq = [0xEC, 0x11];
+    let pi = 0;
+    while (data.length < totalDataCw){
+      data.push(padSeq[pi & 1]); pi++;
+    }
+
+    // ECC (single block for Version 1)
+    const gen = rsGenerator(ecl.ecCodewords);
+    const ecc = Array.from(rsRemainder(Uint8Array.from(data), gen));
+    return { data, ecc };
+  }
+
+  // Create empty symbol with function patterns reserved
+  function initMatrix(){
+    const modules = Array.from({length: SIZE}, () => Array(SIZE).fill(null));
+    const reserved = Array.from({length: SIZE}, () => Array(SIZE).fill(false));
+
+    function set(x, y, val, isFunc=true){
+      if (x < 0 || y < 0 || x >= SIZE || y >= SIZE) return;
+      modules[y][x] = val;
+      if (isFunc) reserved[y][x] = true;
+    }
+
+    function drawFinder(x, y){
+      for (let dy = -1; dy <= 7; dy++){
+        for (let dx = -1; dx <= 7; dx++){
+          const xx = x + dx, yy = y + dy;
+          if (xx < 0 || yy < 0 || xx >= SIZE || yy >= SIZE) continue;
+          // Separator (dx == -1 || dx == 7 || dy == -1 || dy == 7)
+          if (dx === -1 || dx === 7 || dy === -1 || dy === 7){
+            modules[yy][xx] = LIGHT;
+            reserved[yy][xx] = true;
+          } else {
+            const a = (dx >= 0 && dx <= 6 && dy >= 0 && dy <= 6);
+            const on = (dx === 0 || dx === 6 || dy === 0 || dy === 6) || (dx >= 2 && dx <= 4 && dy >= 2 && dy <= 4);
+            if (a){
+              modules[yy][xx] = on ? DARK : LIGHT;
+              reserved[yy][xx] = true;
+            }
+          }
+        }
+      }
+    }
+
+    // Finders
+    drawFinder(0, 0);
+    drawFinder(SIZE - 7, 0);
+    drawFinder(0, SIZE - 7);
+
+    // Timing patterns
+    for (let i = 0; i < SIZE; i++){
+      if (!reserved[6][i]) { set(i, 6, (i % 2) === 0); }
+      if (!reserved[i][6]) { set(6, i, (i % 2) === 0); }
+    }
+
+    // Dark module
+    set(8, 4 * 1 + 9, DARK);
+
+    // Reserve format information areas (values set later)
+    for (let i = 0; i < 9; i++){
+      if (i !== 6) { reserved[i][8] = true; modules[i][8] = null; }
+      if (i !== 6) { reserved[8][i] = true; modules[8][i] = null; }
+    }
+    for (let i = 0; i < 8; i++){
+      reserved[SIZE - 1 - i][8] = true; modules[SIZE - 1 - i][8] = null;
+      reserved[8][SIZE - 1 - i] = true; modules[8][SIZE - 1 - i] = null;
+    }
+
+    return { modules, reserved, set };
+  }
+
+  // Mask functions (true => flip)
+  const MASKS = [
+    (x,y) => ((x + y) % 2) === 0,
+    (x,y) => (y % 2) === 0,
+    (x,y) => (x % 3) === 0,
+    (x,y) => ((x + y) % 3) === 0,
+    (x,y) => (((Math.floor(y/2) + Math.floor(x/3)) % 2) === 0),
+    (x,y) => ((((x*y) % 2) + ((x*y) % 3)) === 0),
+    (x,y) => (((((x*y) % 2) + ((x*y) % 3)) % 2) === 0),
+    (x,y) => (((((x + y) % 2) + ((x*y) % 3)) % 2) === 0),
+  ];
+
+  // Place data bits into the matrix for a given mask
+  function placeData(modules, reserved, codeBits, maskId){
+    let bitIdx = 0;
+    let dirUp = true;
+    for (let x = SIZE - 1; x >= 0; x -= 2){
+      if (x === 6) x--; // skip timing column
+      for (let i = 0; i < SIZE; i++){
+        const y = dirUp ? (SIZE - 1 - i) : i;
+        for (let dx = 0; dx < 2; dx++){
+          const xx = x - dx, yy = y;
+          if (reserved[yy][xx]) continue;
+          const bit = bitIdx < codeBits.length ? codeBits[bitIdx++] : 0;
+          const m = MASKS[maskId](xx, yy);
+          modules[yy][xx] = (bit ^ (m ? 1 : 0)) ? DARK : LIGHT;
+        }
+      }
+      dirUp = !dirUp;
+    }
+  }
+
+  // Format info (15 bits): [EC(2) | mask(3) | BCH(10)] XOR 0x5412
+  function formatBits(eclKey, maskId){
+    const ecbits = ECL[eclKey].formatBits & 0b11;
+    const data = ((ecbits << 3) | (maskId & 0b111)) & 0x1F; // 5 bits
+    let v = data << 10;
+    const G = 0b10100110111; // 0x537
+    for (let i = 14; i >= 10; i--){
+      if ((v >>> i) & 1) v ^= (G << (i - 10));
+    }
+    let format = ((data << 10) | v) ^ 0x5412;
+    return format & 0x7FFF;
+  }
+
+  function placeFormatInfo(modules, reserved, eclKey, maskId){
+    const f = formatBits(eclKey, maskId);
+
+    // Top-left, around
+    for (let i = 0; i <= 5; i++){
+      modules[i][8] = ((f >>> i) & 1) ? DARK : LIGHT;
+    }
+    modules[7][8] = ((f >>> 6) & 1) ? DARK : LIGHT;
+    modules[8][8] = ((f >>> 7) & 1) ? DARK : LIGHT;
+    modules[8][7] = ((f >>> 8) & 1) ? DARK : LIGHT;
+    for (let i = 9; i <= 14; i++){
+      modules[8][14 - i] = ((f >>> i) & 1) ? DARK : LIGHT;
+    }
+
+    // Other locations
+    for (let i = 0; i <= 7; i++){
+      modules[SIZE - 1 - i][8] = ((f >>> i) & 1) ? DARK : LIGHT;
+    }
+    for (let i = 8; i <= 14; i++){
+      modules[8][SIZE - 15 + i] = ((f >>> i) & 1) ? DARK : LIGHT;
+    }
+
+    // Ensure reserved flags set (already were)
+    // Not changing 'reserved' to allow scoring to include these modules
+  }
+
+  // Penalty scoring
+  function score(modules){
+    let penalty = 0;
+    const N = SIZE;
+
+    // Rule 1: Adjacent modules in row/col with same color (runs of >=5)
+    function runPenaltyLine(get){
+      let total = 0;
+      for (let i = 0; i < N; i++){
+        let runColor = get(i, 0);
+        let runLen = 1;
+        for (let j = 1; j < N; j++){
+          const c = get(i, j);
+          if (c === runColor) {
+            runLen++;
+          } else {
+            if (runLen >= 5) total += 3 + (runLen - 5);
+            runColor = c; runLen = 1;
+          }
+        }
+        if (runLen >= 5) total += 3 + (runLen - 5);
+      }
+      return total;
+    }
+    penalty += runPenaltyLine((r,c)=>modules[r][c]);
+    penalty += runPenaltyLine((c,r)=>modules[r][c]); // transpose
+
+    // Rule 2: 2x2 blocks
+    for (let y = 0; y < N - 1; y++){
+      for (let x = 0; x < N - 1; x++){
+        const m = modules[y][x];
+        if (m === modules[y][x+1] && m === modules[y+1][x] && m === modules[y+1][x+1]){
+          penalty += 3;
+        }
+      }
+    }
+
+    // Rule 3: Finder-like pattern in rows/cols
+    function finderPenalty(get){
+      let total = 0;
+      for (let i = 0; i < N; i++){
+        const line = [];
+        for (let j = 0; j < N; j++) line.push(get(i,j) ? 1 : 0);
+        for (let j = 0; j <= N - 11; j++){
+          // 10111010000 or 00001011101
+          const a = line.slice(j, j+11).join('');
+          if (a === "10111010000" || a === "00001011101") total += 40;
+        }
+      }
+      return total;
+    }
+    penalty += finderPenalty((r,c)=>modules[r][c]);
+    penalty += finderPenalty((c,r)=>modules[r][c]);
+
+    // Rule 4: Balance of dark modules
+    let dark = 0;
+    for (let y = 0; y < N; y++)
+      for (let x = 0; x < N; x++)
+        if (modules[y][x]) dark++;
+    const total = N * N;
+    const percent = (dark * 100) / total;
+    const k = Math.abs(percent - 50) / 5;
+    penalty += Math.floor(k) * 10;
+
+    return penalty;
+  }
+
+  // Build full matrix with chosen/auto mask
+  function buildMatrixFor(bytes, eclKey, maskPref){
+    const { data, ecc } = buildDataCodewords(bytes, eclKey);
+    const allCode = data.concat(ecc);
+    // Flatten to bits (MSB first)
+    const codeBits = [];
+    for (const cw of allCode){
+      putBits(codeBits, cw, 8);
+    }
+
+    let best = null;
+    const masks = maskPref === "auto" ? [0,1,2,3,4,5,6,7] : [parseInt(maskPref,10)];
+    for (const maskId of masks){
+      const { modules, reserved } = initMatrix();
+      placeData(modules, reserved, codeBits, maskId);
+      placeFormatInfo(modules, reserved, eclKey, maskId);
+      const s = score(modules);
+      if (!best || s < best.score){
+        best = { modules, maskId, score: s };
+        if (maskPref !== "auto") break;
+      }
+    }
+    return { modules: best.modules, maskId: best.maskId };
+  }
+
+  // Drawing
+  function drawCanvas(modules, scale, border, canvas){
+    const n = modules.length;
+    const dim = (n + border * 2) * scale;
+    canvas.width = dim;
+    canvas.height = dim;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    // Background
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, dim, dim);
+    // Modules
+    ctx.fillStyle = '#000000';
+    for (let y = 0; y < n; y++){
+      for (let x = 0; x < n; x++){
+        if (modules[y][x]){
+          ctx.fillRect((x + border) * scale, (y + border) * scale, scale, scale);
+        }
+      }
+    }
+  }
+
+  function toSVG(modules, scale, border){
+    const n = modules.length;
+    const size = (n + border * 2) * scale;
+    const rects = [];
+    for (let y = 0; y < n; y++){
+      for (let x = 0; x < n; x++){
+        if (modules[y][x]){
+          const rx = (x + border) * scale;
+          const ry = (y + border) * scale;
+          rects.push(`<rect x="${rx}" y="${ry}" width="${scale}" height="${scale}" />`);
+        }
+      }
+    }
+    return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" shape-rendering="crispEdges">
+  <rect width="100%" height="100%" fill="#FFFFFF"/>
+  <g fill="#000000">
+    ${rects.join('\n    ')}
+  </g>
+</svg>`;
+  }
+
+  // UI wiring
+  const $ = sel => document.querySelector(sel);
+  const textEl = $('#text');
+  const eclEl = $('#ecl');
+  const maskEl = $('#mask');
+  const scaleEl = $('#scale');
+  const scaleLabel = $('#scaleLabel');
+  const borderEl = $('#border');
+  const canvas = $('#canvas');
+  const svgWrap = $('#svgWrap');
+  const btnGen = $('#generate');
+  const btnPng = $('#dlPng');
+  const btnSvg = $('#dlSvg');
+  const btnCopySvg = $('#copySvg');
+  const errEl = $('#error');
+  const countEl = $('#count');
+  const limitEl = $('#limit');
+
+  function updateCount(){
+    const bytes = utf8Bytes(textEl.value);
+    countEl.textContent = `${bytes.length} bytes`;
+    const ecl = eclEl.value;
+    limitEl.textContent = `Max ${MAX_BYTES[ecl]} bytes @ ECL ${ecl}`;
+    return bytes;
+  }
+
+  let current = { svg: '', modules: null };
+
+  function generate(){
+    const bytes = updateCount();
+    const ecl = eclEl.value;
+    const border = clamp(parseInt(borderEl.value,10) || 4, 0, 40);
+    borderEl.value = border;
+    const scale = clamp(parseInt(scaleEl.value,10) || 10, 1, 64);
+    scaleEl.value = scale;
+    scaleLabel.textContent = `${scale} px`;
+
+    errEl.style.display = 'none';
+    errEl.textContent = '';
+
+    try {
+      const { modules } = buildMatrixFor(bytes, ecl, maskEl.value);
+      current.modules = modules;
+
+      // Draw canvas
+      drawCanvas(modules, scale, border, canvas);
+
+      // Build and show SVG
+      const svg = toSVG(modules, scale, border);
+      current.svg = svg;
+      svgWrap.innerHTML = svg;
+      btnPng.disabled = false;
+      btnSvg.disabled = false;
+      btnCopySvg.disabled = false;
+    } catch (err){
+      btnPng.disabled = true;
+      btnSvg.disabled = true;
+      btnCopySvg.disabled = true;
+      // Clear preview
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      svgWrap.innerHTML = '';
+      errEl.textContent = (err && err.message) ? err.message : String(err);
+      errEl.style.display = 'block';
+    }
+  }
+
+  function clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+
+  btnGen.addEventListener('click', generate);
+  textEl.addEventListener('input', () => { updateCount(); /* live but not auto-generate */ });
+  eclEl.addEventListener('change', generate);
+  maskEl.addEventListener('change', generate);
+  scaleEl.addEventListener('input', ()=> { scaleLabel.textContent = `${scaleEl.value} px`; });
+  scaleEl.addEventListener('change', generate);
+  borderEl.addEventListener('change', generate);
+
+  btnPng.addEventListener('click', () => {
+    if (!current.modules) return;
+    const scale = parseInt(scaleEl.value,10) || 10;
+    const border = parseInt(borderEl.value,10) || 4;
+    drawCanvas(current.modules, scale, border, canvas); // ensure fresh
+    const url = canvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'qr.png';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+
+  btnSvg.addEventListener('click', () => {
+    if (!current.svg) return;
+    const blob = new Blob([current.svg], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'qr.svg';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+
+  btnCopySvg.addEventListener('click', async () => {
+    if (!current.svg) return;
+    try {
+      if (navigator.clipboard && window.ClipboardItem) {
+        const blob = new Blob([current.svg], { type: 'image/svg+xml' });
+        const item = new ClipboardItem({ 'image/svg+xml': blob, 'text/plain': new Blob([current.svg], {type:'text/plain'}) });
+        await navigator.clipboard.write([item]);
+      } else {
+        await navigator.clipboard.writeText(current.svg);
+      }
+      btnCopySvg.textContent = 'Copied!';
+      setTimeout(()=> btnCopySvg.textContent = 'Copy SVG', 1200);
+    } catch (e) {
+      alert('Clipboard error: ' + e);
+    }
+  });
+
+  // Initial render
+  updateCount();
+  generate();
+
+})();
+</script>
+</body>
+</html>
