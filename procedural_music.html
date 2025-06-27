@@ -1,0 +1,1272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Procedural Music Generator — Markov + Euclidean (No Dependencies)</title>
+<style>
+  :root {
+    --bg: #101217;
+    --panel: #171b22;
+    --fg: #e6edf3;
+    --muted: #9aa6b2;
+    --accent: #71b7ff;
+    --accent2: #55d6a9;
+    --warn: #ff9966;
+    --red: #ff6b6b;
+    --gridOn: #27c29b;
+    --gridOff: #2a2f39;
+    --gridBeat: #3b4352;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    line-height: 1.4;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding: 1rem;
+    border-bottom: 1px solid #222a35;
+    background: linear-gradient(180deg, #12161c, #0f1318);
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 {
+    font-size: 1.05rem; margin: 0; font-weight: 600; color: var(--fg);
+  }
+  header .spacer { flex: 1; }
+  .btn {
+    appearance: none; border: 1px solid #2b3341; background: #1a202a; color: var(--fg);
+    padding: .45rem .7rem; border-radius: .5rem; cursor: pointer; font-weight: 600;
+    transition: transform .02s ease, background .2s ease, border-color .2s ease;
+  }
+  .btn:hover { background: #1f2631; border-color: #3a4659; }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--accent); color: #09121c; border-color: transparent; }
+  .btn-primary:hover { filter: brightness(1.05); }
+  .btn-danger { background: var(--red); color: #160707; border-color: transparent; }
+  .btn-ghost { background: transparent; border-color: #2b3341; }
+  .btn-small { padding: .3rem .55rem; font-size: .85rem; }
+  .toolbar {
+    display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+  }
+  main { padding: 1rem; display: grid; gap: 1rem; grid-template-columns: 320px 1fr; }
+  @media (max-width: 980px) {
+    main { grid-template-columns: 1fr; }
+  }
+  .panel {
+    background: var(--panel);
+    border: 1px solid #232a35;
+    border-radius: .75rem;
+    padding: .75rem;
+  }
+  .panel h2 {
+    margin: .25rem 0 .5rem; font-size: .95rem; color: var(--muted); font-weight: 700;
+    letter-spacing: .02em; text-transform: uppercase;
+  }
+  .row { display: grid; grid-template-columns: 1fr 1fr; gap: .5rem; }
+  .row-3 { display: grid; grid-template-columns: repeat(3,1fr); gap: .5rem; }
+  .row-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: .5rem; }
+  .field { display: grid; gap: .25rem; }
+  .field label { font-size: .82rem; color: var(--muted); }
+  input[type="range"] { width: 100%; }
+  input[type="number"], select, input[type="text"] {
+    width: 100%; background: #0f1319; color: var(--fg); border: 1px solid #2b3341;
+    padding: .45rem .5rem; border-radius: .5rem; outline: none;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(16, 1fr);
+    gap: .2rem;
+    margin-top: .35rem;
+  }
+  .cell {
+    aspect-ratio: 1.8/1;
+    background: var(--gridOff);
+    border-radius: .3rem;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid #2a2f39;
+  }
+  .cell.beat { background: var(--gridBeat); }
+  .cell.on { background: var(--gridOn); box-shadow: inset 0 0 0 1px #4ff7cd22; }
+  .cell.playing::after {
+    content: ""; position: absolute; inset: 0;
+    outline: 2px solid var(--accent2); outline-offset: -2px;
+  }
+  .track {
+    display: grid; grid-template-columns: 120px 1fr; gap: .75rem; align-items: center;
+    border-top: 1px dashed #263040; padding-top: .65rem; margin-top: .65rem;
+  }
+  .track:first-child { border-top: none; padding-top: 0; margin-top: 0; }
+  .track .name { font-weight: 700; color: var(--fg); display: flex; align-items: center; gap: .4rem; }
+  .muter { display: flex; gap: .3rem; }
+  .muter input { transform: translateY(1px); }
+  .inline { display: inline-flex; gap: .35rem; align-items: center; }
+  .inline code { background: #0f1319; border: 1px solid #2b3341; padding: .2rem .3rem; border-radius: .3rem; }
+  .hr { height: 1px; background: #222a35; margin: .5rem 0; }
+  .badgelite { display:inline-block; font-size: .75rem; color: #0c1617; background: #7de6c3; padding: .1rem .4rem; border-radius: .3rem; font-weight: 800;}
+  .footer { text-align: center; color: var(--muted); font-size: .85rem; padding: .75rem; }
+  details summary { cursor: pointer; color: var(--muted); }
+  kbd { background: #0f1319; color: var(--fg); border: 1px solid #2b3341; padding: .12rem .3rem; border-radius: .3rem; font-size: .8rem; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Procedural Music Generator <span class="badgelite">Markov + Euclidean</span></h1>
+    <div class="spacer"></div>
+    <div class="toolbar">
+      <button class="btn btn-primary" id="btnPlay">Start</button>
+      <button class="btn btn-ghost" id="btnRandomize">Randomize</button>
+      <button class="btn btn-ghost btn-small" id="btnClearTrain">Clear Markov</button>
+      <button class="btn btn-danger btn-small" id="btnPanic">Panic</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel" id="left">
+      <h2>Transport</h2>
+      <div class="row">
+        <div class="field">
+          <label for="bpm">Tempo (BPM)</label>
+          <input type="range" id="bpm" min="40" max="220" value="120" />
+          <div class="inline">
+            <span id="bpmVal">120</span>
+            <span class="muted">bpm</span>
+          </div>
+        </div>
+        <div class="field">
+          <label for="swing">Swing</label>
+          <input type="range" id="swing" min="0" max="0.5" step="0.01" value="0.14" />
+          <div><span id="swingVal">0.14</span></div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <h2>Melody Synth & Scale</h2>
+      <div class="row">
+        <div class="field">
+          <label for="root">Root</label>
+          <select id="root"></select>
+        </div>
+        <div class="field">
+          <label for="scale">Scale</label>
+          <select id="scale">
+            <option>Major</option>
+            <option>Natural Minor</option>
+            <option>Dorian</option>
+            <option>Mixolydian</option>
+            <option>Pentatonic Major</option>
+            <option>Pentatonic Minor</option>
+            <option>Harmonic Minor</option>
+            <option>Chromatic</option>
+          </select>
+        </div>
+      </div>
+      <div class="row">
+        <div class="field">
+          <label for="wave">Waveform</label>
+          <select id="wave">
+            <option>sawtooth</option>
+            <option>square</option>
+            <option selected>triangle</option>
+            <option>sine</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="cutoff">Filter Cutoff</label>
+          <input type="range" id="cutoff" min="200" max="10000" value="2200" />
+          <div><span id="cutoffVal">2200</span> Hz</div>
+        </div>
+      </div>
+      <div class="row-4">
+        <div class="field">
+          <label for="octave">Base Octave</label>
+          <input type="range" id="octave" min="2" max="6" value="4" />
+          <div><span id="octaveVal">4</span></div>
+        </div>
+        <div class="field">
+          <label for="range">Octave Range</label>
+          <input type="range" id="range" min="1" max="3" value="2" />
+          <div><span id="rangeVal">2</span></div>
+        </div>
+        <div class="field">
+          <label for="gate">Gate</label>
+          <input type="range" id="gate" min="0.05" max="0.95" step="0.01" value="0.45" />
+          <div><span id="gateVal">0.45</span></div>
+        </div>
+        <div class="field">
+          <label for="melDur">Note Len (steps)</label>
+          <input type="range" id="melDur" min="1" max="8" step="1" value="2" />
+          <div><span id="melDurVal">2</span></div>
+        </div>
+      </div>
+      <div class="row-4">
+        <div class="field">
+          <label for="attack">Attack</label>
+          <input type="range" id="attack" min="0.001" max="0.5" step="0.001" value="0.01" />
+          <div><span id="attackVal">0.01</span>s</div>
+        </div>
+        <div class="field">
+          <label for="decay">Decay</label>
+          <input type="range" id="decay" min="0.01" max="1.5" step="0.01" value="0.25" />
+          <div><span id="decayVal">0.25</span>s</div>
+        </div>
+        <div class="field">
+          <label for="sustain">Sustain</label>
+          <input type="range" id="sustain" min="0.0" max="1.0" step="0.01" value="0.6" />
+          <div><span id="sustainVal">0.6</span></div>
+        </div>
+        <div class="field">
+          <label for="release">Release</label>
+          <input type="range" id="release" min="0.01" max="2.5" step="0.01" value="0.35" />
+          <div><span id="releaseVal">0.35</span>s</div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <h2>Markov Melody</h2>
+      <div class="row">
+        <div class="field">
+          <label for="order">Order</label>
+          <select id="order">
+            <option value="1" selected>1</option>
+            <option value="2">2</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="seed">Random Seed</label>
+          <input type="number" id="seed" value="1337" />
+        </div>
+      </div>
+      <div class="field">
+        <label for="train">Train Markov (degrees 0..N-1 or notes like C4 D4 A3)</label>
+        <input type="text" id="train" placeholder="Example: 0 1 2 3 2 1 0 4 3 2 1 or C4 D4 A3..." />
+      </div>
+      <div class="toolbar" style="margin-top:.25rem;">
+        <button class="btn btn-small" id="btnTrain">Train</button>
+        <button class="btn btn-small" id="btnGenSeed">Reseed</button>
+        <button class="btn btn-small" id="btnExport">Export Preset</button>
+        <button class="btn btn-small" id="btnImport">Import Preset</button>
+      </div>
+
+      <div class="hr"></div>
+
+      <h2>Rhythm Patterns (Euclidean)</h2>
+      <div class="row-3">
+        <div class="field">
+          <label>Kick: steps</label>
+          <input type="range" id="kSteps" min="4" max="32" step="1" value="16">
+          <div class="inline"><span id="kStepsVal">16</span></div>
+        </div>
+        <div class="field">
+          <label>Kick: pulses</label>
+          <input type="range" id="kPulses" min="0" max="32" step="1" value="4">
+          <div class="inline"><span id="kPulsesVal">4</span></div>
+        </div>
+        <div class="field">
+          <label>Kick: rotate</label>
+          <input type="range" id="kRotate" min="0" max="31" step="1" value="0">
+          <div class="inline"><span id="kRotateVal">0</span></div>
+        </div>
+      </div>
+      <div class="row-3">
+        <div class="field">
+          <label>Snare: steps</label>
+          <input type="range" id="sSteps" min="4" max="32" step="1" value="16">
+          <div><span id="sStepsVal">16</span></div>
+        </div>
+        <div class="field">
+          <label>Snare: pulses</label>
+          <input type="range" id="sPulses" min="0" max="32" step="1" value="2">
+          <div><span id="sPulsesVal">2</span></div>
+        </div>
+        <div class="field">
+          <label>Snare: rotate</label>
+          <input type="range" id="sRotate" min="0" max="31" step="1" value="8">
+          <div><span id="sRotateVal">8</span></div>
+        </div>
+      </div>
+      <div class="row-3">
+        <div class="field">
+          <label>Hat: steps</label>
+          <input type="range" id="hSteps" min="4" max="32" step="1" value="16">
+          <div><span id="hStepsVal">16</span></div>
+        </div>
+        <div class="field">
+          <label>Hat: pulses</label>
+          <input type="range" id="hPulses" min="0" max="32" step="1" value="9">
+          <div><span id="hPulsesVal">9</span></div>
+        </div>
+        <div class="field">
+          <label>Hat: rotate</label>
+          <input type="range" id="hRotate" min="0" max="31" step="1" value="0">
+          <div><span id="hRotateVal">0</span></div>
+        </div>
+      </div>
+      <div class="row-3">
+        <div class="field">
+          <label>Melody: steps</label>
+          <input type="range" id="mSteps" min="4" max="32" step="1" value="16">
+          <div><span id="mStepsVal">16</span></div>
+        </div>
+        <div class="field">
+          <label>Melody: pulses</label>
+          <input type="range" id="mPulses" min="0" max="32" step="1" value="8">
+          <div><span id="mPulsesVal">8</span></div>
+        </div>
+        <div class="field">
+          <label>Melody: rotate</label>
+          <input type="range" id="mRotate" min="0" max="31" step="1" value="0">
+          <div><span id="mRotateVal">0</span></div>
+        </div>
+      </div>
+
+      <div class="hr"></div>
+
+      <h2>Mix</h2>
+      <div class="row">
+        <div class="field">
+          <label>Master</label>
+          <input type="range" id="master" min="0" max="1" step="0.001" value="0.8">
+          <div><span id="masterVal">0.80</span></div>
+        </div>
+        <div class="field">
+          <label>Sidechain duck on melody</label>
+          <input type="range" id="duck" min="0" max="1" step="0.01" value="0.2">
+          <div><span id="duckVal">0.20</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="right">
+      <h2>Tracks</h2>
+
+      <div class="track" data-track="kick">
+        <div>
+          <div class="name">Kick</div>
+          <div class="muter">
+            <label><input type="checkbox" id="kickMute"> mute</label>
+            <label><input type="checkbox" id="kickSolo"> solo</label>
+          </div>
+        </div>
+        <div class="grid" id="gridKick"></div>
+      </div>
+
+      <div class="track" data-track="snare">
+        <div>
+          <div class="name">Snare</div>
+          <div class="muter">
+            <label><input type="checkbox" id="snareMute"> mute</label>
+            <label><input type="checkbox" id="snareSolo"> solo</label>
+          </div>
+        </div>
+        <div class="grid" id="gridSnare"></div>
+      </div>
+
+      <div class="track" data-track="hat">
+        <div>
+          <div class="name">Hat</div>
+          <div class="muter">
+            <label><input type="checkbox" id="hatMute"> mute</label>
+            <label><input type="checkbox" id="hatSolo"> solo</label>
+          </div>
+        </div>
+        <div class="grid" id="gridHat"></div>
+      </div>
+
+      <div class="track" data-track="melody">
+        <div>
+          <div class="name">Melody</div>
+          <div class="muter">
+            <label><input type="checkbox" id="melodyMute"> mute</label>
+            <label><input type="checkbox" id="melodySolo"> solo</label>
+          </div>
+        </div>
+        <div class="grid" id="gridMelody"></div>
+      </div>
+
+      <div class="hr"></div>
+
+      <details>
+        <summary>Tips</summary>
+        <ul>
+          <li>Use Euclidean parameters to sculpt rhythms; rotate to shift groove.</li>
+          <li>Train the Markov chain with simple sequences for motifs; order 2 adds memory.</li>
+          <li>Reseed random for different variations with the same settings.</li>
+          <li>Click Randomize for quick inspiration.</li>
+          <li>Panic stops audio and releases all voices if something hangs.</li>
+        </ul>
+      </details>
+
+      <div class="footer">All in one file. No libraries. Powered by Web Audio. ©</div>
+    </section>
+  </main>
+
+<script>
+(() => {
+  // ---------- Utilities ----------
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const lerp = (a, b, t) => a + (b - a) * t;
+
+  // Seeded RNG (Mulberry32)
+  function mulberry32(seed) {
+    let t = seed >>> 0;
+    return function() {
+      t |= 0; t = t + 0x6D2B79F5 | 0;
+      let r = Math.imul(t ^ t >>> 15, 1 | t);
+      r ^= r + Math.imul(r ^ r >>> 7, 61 | r);
+      return ((r ^ r >>> 14) >>> 0) / 4294967296;
+    }
+  }
+
+  // Shuffle with RNG
+  function shuffle(arr, rng) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [arr[i], arr[j]] = [arr[j], arr[i]];
+    }
+    return arr;
+  }
+
+  // Euclidean rhythm (Bjorklund)
+  function euclid(steps, pulses, rotate=0) {
+    steps = Math.max(1, Math.floor(steps));
+    pulses = clamp(Math.floor(pulses), 0, steps);
+    if (pulses === 0) return Array(steps).fill(0);
+    if (pulses === steps) return Array(steps).fill(1);
+    let counts = [], remainders = [], divisor = steps - pulses, level = 0;
+    remainders.push(pulses);
+    while (true) {
+      counts.push(Math.floor(divisor / remainders[level]));
+      remainders.push(divisor % remainders[level]);
+      divisor = remainders[level];
+      level++;
+      if (remainders[level] <= 1) break;
+    }
+    counts.push(divisor);
+    function build(level) {
+      if (level === -1) return [0];
+      if (level === -2) return [1];
+      let res = [];
+      const a = build(level - 1);
+      const b = build(level - 2);
+      for (let i = 0; i < counts[level]; i++) res = res.concat(a);
+      if (remainders[level] !== 0) res = res.concat(b);
+      return res;
+    }
+    let pattern = build(level);
+    // Flatten (pattern is nested arrays)
+    pattern = pattern.flat(Infinity);
+    // rotate
+    rotate = ((rotate % steps) + steps) % steps;
+    if (rotate) pattern = pattern.slice(rotate).concat(pattern.slice(0, rotate));
+    return pattern.map(v => v ? 1 : 0).slice(0, steps);
+  }
+
+  // ---------- Scales ----------
+  const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+  function fillRootSelect(sel) {
+    NOTE_NAMES.forEach((n, i) => {
+      const opt = document.createElement('option'); opt.value = i; opt.textContent = n; sel.appendChild(opt);
+    });
+    sel.value = 0;
+  }
+
+  const SCALES = {
+    "Major":            [0,2,4,5,7,9,11],
+    "Natural Minor":    [0,2,3,5,7,8,10],
+    "Dorian":           [0,2,3,5,7,9,10],
+    "Mixolydian":       [0,2,4,5,7,9,10],
+    "Pentatonic Major": [0,2,4,7,9],
+    "Pentatonic Minor": [0,3,5,7,10],
+    "Harmonic Minor":   [0,2,3,5,7,8,11],
+    "Chromatic":        [0,1,2,3,4,5,6,7,8,9,10,11]
+  };
+
+  function degreeToMidi(deg, root, scale, octave, spread, rng) {
+    // choose octave within range [octave, octave+spread-1] biased to center
+    const low = octave, high = octave + spread - 1;
+    let oct = Math.floor(lerp(low, high + 0.999, rng()));
+    const semitone = (root + scale[deg % scale.length]) % 12;
+    return 12 * (oct + 1) + semitone;
+  }
+
+  function midiToFreq(m) {
+    return 440 * Math.pow(2, (m - 69) / 12);
+  }
+
+  // Parse tokens to degrees or midi
+  function parseTrainingTokens(tokens, root, scaleName) {
+    const scale = SCALES[scaleName];
+    const out = [];
+    for (const tok of tokens) {
+      if (/^-?\d+$/.test(tok)) {
+        // degree index
+        out.push(Math.abs(parseInt(tok, 10)) % scale.length);
+      } else {
+        // try note name e.g. C#4
+        const m = tok.toUpperCase().match(/^([A-G])(#|B)?(\-?\d+)?$/);
+        if (m) {
+          let base = {C:0,D:2,E:4,F:5,G:7,A:9,B:11}[m[1]];
+          if (m[2]==="#") base += 1;
+          if (m[2]==="B") base -= 1;
+          let oct = m[3] != null ? parseInt(m[3],10) : 4;
+          const midi = 12*(oct+1) + ((base%12+12)%12);
+          // map midi to nearest degree
+          const semis = (midi - (12*(oct+1))) % 12; // local semitone
+          // Map relative to root
+          const rel = ((base - root) % 12 + 12) % 12;
+          // find nearest in scale
+          let best = 0, bestd = 128;
+          for (let i=0;i<scale.length;i++){
+            let d = Math.abs(rel - scale[i]);
+            if (d < bestd) { bestd = d; best = i; }
+          }
+          out.push(best);
+        }
+      }
+    }
+    return out;
+  }
+
+  // ---------- Markov Chain ----------
+  class Markov {
+    constructor(order=1, stateSize=7) {
+      this.order = order;
+      this.stateSize = stateSize;
+      this.map = new Map(); // key -> freq map
+      this.totalByKey = new Map();
+    }
+    stateKey(prev) {
+      if (this.order === 1) return prev[prev.length-1] ?? 0;
+      // order 2
+      const a = prev[prev.length-2] ?? 0;
+      const b = prev[prev.length-1] ?? 0;
+      return `${a},${b}`;
+    }
+    observe(prev, next) {
+      const key = this.stateKey(prev);
+      if (!this.map.has(key)) this.map.set(key, new Map());
+      const m = this.map.get(key);
+      m.set(next, (m.get(next) || 0) + 1);
+      this.totalByKey.set(key, (this.totalByKey.get(key) || 0) + 1);
+    }
+    train(sequence) {
+      if (!sequence || sequence.length === 0) return;
+      const n = sequence.length;
+      if (this.order === 1) {
+        for (let i=0;i<n-1;i++) this.observe([sequence[i]], sequence[i+1]);
+      } else { // order 2
+        for (let i=0;i<n-2;i++) this.observe([sequence[i], sequence[i+1]], sequence[i+2]);
+      }
+    }
+    predict(prev, rng) {
+      const key = this.stateKey(prev);
+      let m = this.map.get(key);
+      if (!m) {
+        // fallback to order-1 or random
+        if (this.order === 2) {
+          const fb = new Markov(1, this.stateSize);
+          // degrade existing map to order1 rough prior
+          for (let [k, freqMap] of this.map.entries()) {
+            const parts = k.split(',');
+            const last = parseInt(parts[1] ?? parts[0] ?? 0, 10);
+            for (let [nx, f] of freqMap.entries()) {
+              for (let i=0;i<f;i++) fb.observe([last], Number(nx));
+            }
+          }
+          m = fb.map.get(prev[prev.length-1] ?? 0);
+        }
+      }
+      if (!m || m.size === 0) {
+        // uniform random over state size
+        return Math.floor(rng() * this.stateSize);
+      }
+      // Sample weighted
+      const total = Array.from(m.values()).reduce((a,b)=>a+b,0);
+      let r = rng() * total;
+      for (const [k, w] of m.entries()) {
+        if ((r -= w) <= 0) return Number(k);
+      }
+      return Number(Array.from(m.keys())[0]);
+    }
+  }
+
+  // ---------- Audio Engine ----------
+  const AudioC = window.AudioContext || window.webkitAudioContext;
+  let ctx = null;
+
+  // Global Nodes
+  let masterGain, comp, limiter, duckGain, filterNode;
+
+  function setupAudio() {
+    if (ctx) return;
+    ctx = new AudioC();
+    masterGain = ctx.createGain(); masterGain.gain.value = parseFloat(master.value);
+    duckGain = ctx.createGain(); duckGain.gain.value = 1.0;
+    filterNode = ctx.createBiquadFilter(); filterNode.type = 'lowpass'; filterNode.frequency.value = parseFloat(cutoff.value);
+    comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -12; comp.knee.value = 12; comp.ratio.value = 2; comp.attack.value = 0.005; comp.release.value = 0.1;
+    limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -2; limiter.knee.value = 0; limiter.ratio.value = 20; limiter.attack.value = 0.002; limiter.release.value = 0.1;
+
+    duckGain.connect(filterNode);
+    filterNode.connect(masterGain);
+    masterGain.connect(comp);
+    comp.connect(limiter);
+    limiter.connect(ctx.destination);
+  }
+
+  function now() { return ctx ? ctx.currentTime : 0; }
+
+  // Simple drum synths
+  function scheduleKick(t, velocity=1) {
+    if (!ctx) return;
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    const click = ctx.createOscillator();
+    const gClick = ctx.createGain();
+
+    o.type = 'sine';
+    o.frequency.setValueAtTime(120, t);
+    o.frequency.exponentialRampToValueAtTime(35, t + 0.12);
+    g.gain.setValueAtTime(0.001, t);
+    g.gain.exponentialRampToValueAtTime(0.9*velocity, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.35);
+
+    click.type = 'square';
+    click.frequency.value = 1200;
+    gClick.gain.setValueAtTime(0.15*velocity, t);
+    gClick.gain.exponentialRampToValueAtTime(0.0001, t + 0.02);
+
+    o.connect(g); g.connect(duckGain);
+    click.connect(gClick); gClick.connect(duckGain);
+
+    o.start(t); o.stop(t + 0.5);
+    click.start(t); click.stop(t + 0.05);
+
+    // Duck melody slightly
+    const amt = parseFloat(duck.value);
+    if (amt > 0) {
+      duckGain.gain.cancelScheduledValues(t);
+      duckGain.gain.setValueAtTime(1.0 - amt, t);
+      duckGain.gain.linearRampToValueAtTime(1.0, t + 0.25);
+    }
+  }
+
+  function scheduleSnare(t, velocity=1) {
+    if (!ctx) return;
+    // Noise
+    const bufferSize = ctx.sampleRate * 0.2 | 0;
+    const buf = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i=0;i<bufferSize;i++) data[i] = (Math.random()*2-1) * (1 - i/bufferSize); // decay noise
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.8;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 500;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.6*velocity, t + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
+    src.connect(bp); bp.connect(hp); hp.connect(duckGain);
+    src.start(t); src.stop(t + 0.21);
+  }
+
+  function scheduleHat(t, velocity=1, open=false) {
+    if (!ctx) return;
+    const dur = open ? 0.35 : 0.05;
+    const bufferSize = ctx.sampleRate * dur | 0;
+    const buf = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i=0;i<bufferSize;i++) data[i] = Math.random()*2-1;
+    const src = ctx.createBufferSource(); src.buffer = buf;
+    const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 8000; hp.Q.value = 0.7;
+    const g = ctx.createGain();
+    const t0 = t;
+    g.gain.setValueAtTime(0.0001, t0);
+    g.gain.exponentialRampToValueAtTime((open?0.25:0.18)*velocity, t0 + 0.002);
+    g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    src.connect(hp); hp.connect(duckGain);
+    src.start(t0); src.stop(t0 + dur + 0.01);
+  }
+
+  // Simple mono synth with ADSR + filter
+  class MonoSynth {
+    constructor() {
+      this.porta = 0.01;
+      this.active = new Set();
+    }
+    note(t, midi, lengthSteps, stepDur, velocity=0.9) {
+      if (!ctx) return;
+      const freq = midiToFreq(midi);
+      const wave = waveSel.value;
+      const a = parseFloat(attack.value);
+      const d = parseFloat(decay.value);
+      const s = parseFloat(sustain.value);
+      const r = parseFloat(release.value);
+      const gate = parseFloat(gateEl.value);
+      const noteDur = Math.max(0.01, stepDur * lengthSteps * gate);
+
+      const o = ctx.createOscillator();
+      o.type = wave;
+      o.frequency.setValueAtTime(freq, t);
+
+      const vca = ctx.createGain();
+      vca.gain.setValueAtTime(0.0001, t);
+      // ADSR
+      vca.gain.exponentialRampToValueAtTime(Math.max(0.0002, velocity), t + Math.max(0.001, a));
+      vca.gain.linearRampToValueAtTime(s*velocity, t + a + d);
+      const off = t + noteDur;
+      vca.gain.setValueAtTime(vca.gain.value, off);
+      vca.gain.exponentialRampToValueAtTime(0.0001, off + r);
+
+      o.connect(vca); vca.connect(duckGain);
+      o.start(t);
+      o.stop(off + r + 0.05);
+
+      // Track for panic
+      this.active.add(o);
+      o.onended = () => this.active.delete(o);
+    }
+    panic() {
+      for (const o of this.active) { try { o.stop(); } catch {} }
+      this.active.clear();
+    }
+  }
+  const synth = new MonoSynth();
+
+  // ---------- Sequencer ----------
+  const PPQ_STEPS = 16; // UI grid base
+  let bpm = 120;
+  let swingAmt = 0.14;
+  let isPlaying = false;
+  let nextNoteTime = 0;
+  let currentStep = 0;
+  const lookahead = 0.025;
+  const scheduleAhead = 0.12;
+  let timerId = null;
+  let rng = mulberry32(1337);
+
+  // Tracks state
+  const tr = {
+    kick: { steps:16, pulses:4, rotate:0, pattern:[], mute:false, solo:false },
+    snare:{ steps:16, pulses:2, rotate:8, pattern:[], mute:false, solo:false },
+    hat:  { steps:16, pulses:9, rotate:0, pattern:[], mute:false, solo:false },
+    melody:{ steps:16, pulses:8, rotate:0, pattern:[], mute:false, solo:false }
+  };
+
+  // Markov
+  let markov = new Markov(1, 7);
+  let lastDegrees = [0,0]; // history
+  let lastDegree = 0;
+
+  // ---------- DOM ----------
+  const btnPlay = document.getElementById('btnPlay');
+  const btnRandomize = document.getElementById('btnRandomize');
+  const btnPanic = document.getElementById('btnPanic');
+  const btnTrain = document.getElementById('btnTrain');
+  const btnGenSeed = document.getElementById('btnGenSeed');
+  const btnExport = document.getElementById('btnExport');
+  const btnImport = document.getElementById('btnImport');
+  const btnClearTrain = document.getElementById('btnClearTrain');
+
+  const bpmEl = document.getElementById('bpm');
+  const swingEl = document.getElementById('swing');
+  const bpmVal = document.getElementById('bpmVal');
+  const swingVal = document.getElementById('swingVal');
+
+  const rootSel = document.getElementById('root');
+  const scaleSel = document.getElementById('scale');
+  const waveSel = document.getElementById('wave');
+  const cutoff = document.getElementById('cutoff');
+  const cutoffVal = document.getElementById('cutoffVal');
+
+  const octaveEl = document.getElementById('octave');
+  const octaveVal = document.getElementById('octaveVal');
+  const rangeEl = document.getElementById('range');
+  const rangeVal = document.getElementById('rangeVal');
+  const gateEl = document.getElementById('gate');
+  const gateVal = document.getElementById('gateVal');
+  const melDurEl = document.getElementById('melDur');
+  const melDurVal = document.getElementById('melDurVal');
+
+  const attack = document.getElementById('attack');
+  const decay = document.getElementById('decay');
+  const sustain = document.getElementById('sustain');
+  const release = document.getElementById('release');
+  const attackVal = document.getElementById('attackVal');
+  const decayVal = document.getElementById('decayVal');
+  const sustainVal = document.getElementById('sustainVal');
+  const releaseVal = document.getElementById('releaseVal');
+
+  const orderSel = document.getElementById('order');
+  const seedEl = document.getElementById('seed');
+  const trainEl = document.getElementById('train');
+
+  const master = document.getElementById('master');
+  const masterVal = document.getElementById('masterVal');
+  const duck = document.getElementById('duck');
+  const duckVal = document.getElementById('duckVal');
+
+  // Euclidean controls
+  const ctrl = {
+    kSteps: document.getElementById('kSteps'),   kStepsVal: document.getElementById('kStepsVal'),
+    kPulses: document.getElementById('kPulses'), kPulsesVal: document.getElementById('kPulsesVal'),
+    kRotate: document.getElementById('kRotate'), kRotateVal: document.getElementById('kRotateVal'),
+
+    sSteps: document.getElementById('sSteps'),   sStepsVal: document.getElementById('sStepsVal'),
+    sPulses: document.getElementById('sPulses'), sPulsesVal: document.getElementById('sPulsesVal'),
+    sRotate: document.getElementById('sRotate'), sRotateVal: document.getElementById('sRotateVal'),
+
+    hSteps: document.getElementById('hSteps'),   hStepsVal: document.getElementById('hStepsVal'),
+    hPulses: document.getElementById('hPulses'), hPulsesVal: document.getElementById('hPulsesVal'),
+    hRotate: document.getElementById('hRotate'), hRotateVal: document.getElementById('hRotateVal'),
+
+    mSteps: document.getElementById('mSteps'),   mStepsVal: document.getElementById('mStepsVal'),
+    mPulses: document.getElementById('mPulses'), mPulsesVal: document.getElementById('mPulsesVal'),
+    mRotate: document.getElementById('mRotate'), mRotateVal: document.getElementById('mRotateVal'),
+  };
+
+  // Grids
+  const gridKick = document.getElementById('gridKick');
+  const gridSnare = document.getElementById('gridSnare');
+  const gridHat = document.getElementById('gridHat');
+  const gridMelody = document.getElementById('gridMelody');
+
+  const mute = {
+    kick: document.getElementById('kickMute'),
+    snare: document.getElementById('snareMute'),
+    hat: document.getElementById('hatMute'),
+    melody: document.getElementById('melodyMute'),
+  };
+  const solo = {
+    kick: document.getElementById('kickSolo'),
+    snare: document.getElementById('snareSolo'),
+    hat: document.getElementById('hatSolo'),
+    melody: document.getElementById('melodySolo'),
+  };
+
+  fillRootSelect(rootSel);
+
+  // ---------- UI Helpers ----------
+  function setText(el, v, digits=2) {
+    el.textContent = (typeof v === 'number') ? Number(v).toFixed(digits) : v;
+  }
+
+  function renderGrid(container, pattern, playingIdx=-1, total=PPQ_STEPS) {
+    container.innerHTML = "";
+    for (let i=0;i<PPQ_STEPS;i++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      if (i % 4 === 0) cell.classList.add('beat');
+      // map i to pattern index
+      const idx = Math.floor(i / PPQ_STEPS * pattern.length);
+      if (pattern[idx]) cell.classList.add('on');
+      if (i === playingIdx) cell.classList.add('playing');
+      container.appendChild(cell);
+    }
+  }
+
+  function updateAllGrids(highlightIdx=-1) {
+    renderGrid(gridKick, tr.kick.pattern, highlightIdx);
+    renderGrid(gridSnare, tr.snare.pattern, highlightIdx);
+    renderGrid(gridHat, tr.hat.pattern, highlightIdx);
+    renderGrid(gridMelody, tr.melody.pattern, highlightIdx);
+  }
+
+  function recalcPatterns() {
+    tr.kick.pattern = euclid(tr.kick.steps, tr.kick.pulses, tr.kick.rotate);
+    tr.snare.pattern = euclid(tr.snare.steps, tr.snare.pulses, tr.snare.rotate);
+    tr.hat.pattern = euclid(tr.hat.steps, tr.hat.pulses, tr.hat.rotate);
+    tr.melody.pattern = euclid(tr.melody.steps, tr.melody.pulses, tr.melody.rotate);
+    updateAllGrids(currentStep);
+  }
+
+  function updateMarkovSize() {
+    const scale = SCALES[scaleSel.value];
+    markov = new Markov(parseInt(orderSel.value,10), scale.length);
+    // Seed with a gentle prior: prefer small steps, bias towards central degrees
+    const center = Math.floor(scale.length / 2);
+    const priorSeq = [];
+    for (let i=0;i<64;i++){
+      priorSeq.push((i % scale.length));
+    }
+    markov.train(priorSeq);
+    lastDegree = Math.floor(rng()*scale.length);
+    lastDegrees = [lastDegree, lastDegree];
+  }
+
+  // ---------- Sequencing ----------
+  function nextStepTime(step) {
+    const spb = 60 / bpm;
+    const stepDur = spb / 4; // 16th
+    const swing = swingAmt;
+    const isOdd = step % 2 === 1; // swing every second 16th
+    const offset = isOdd ? swing * (stepDur * 0.5) : 0;
+    return { stepDur, offset };
+  }
+
+  function scheduleNoteForStep(step) {
+    const tBase = nextNoteTime;
+    const { stepDur, offset } = nextStepTime(step);
+    const t = tBase + offset;
+
+    // Determine solo/mute logic
+    const anySolo = Object.values(solo).some(x => x.checked);
+    const allow = (name) => {
+      if (anySolo) return solo[name].checked;
+      return !mute[name].checked;
+    };
+
+    // For each track, compute its index mapped to its steps
+    const idxFor = (track) => Math.floor(step / PPQ_STEPS * track.steps);
+
+    if (allow('kick') && tr.kick.pattern[idxFor(tr.kick)]) scheduleKick(t, 1.0);
+    if (allow('snare') && tr.snare.pattern[idxFor(tr.snare)]) scheduleSnare(t, 0.95);
+    if (allow('hat') && tr.hat.pattern[idxFor(tr.hat)]) {
+      const open = (step % 8 === 4) && (Math.random() < 0.4);
+      scheduleHat(t, 0.8, open);
+    }
+    if (allow('melody') && tr.melody.pattern[idxFor(tr.melody)]) {
+      const root = parseInt(rootSel.value, 10);
+      const scaleName = scaleSel.value;
+      const scale = SCALES[scaleName];
+      const deg = markov.predict(markov.order === 2 ? lastDegrees : [lastDegree], rng);
+      lastDegrees = [lastDegrees[1], deg];
+      lastDegree = deg;
+
+      // map to midi
+      const baseOct = parseInt(octaveEl.value,10);
+      const spread = parseInt(rangeEl.value,10);
+      const midi = degreeToMidi(deg, root, scale, baseOct, spread, rng);
+      const len = parseInt(melDurEl.value,10);
+
+      synth.note(t, midi, len, stepDur, 0.9);
+    }
+  }
+
+  function scheduler() {
+    if (!ctx) return;
+    const spb = 60 / bpm;
+    const stepDur = spb / 4;
+    while (nextNoteTime < ctx.currentTime + scheduleAhead) {
+      scheduleNoteForStep(currentStep);
+      currentStep = (currentStep + 1) % PPQ_STEPS;
+      const { offset } = nextStepTime(currentStep);
+      nextNoteTime += stepDur;
+    }
+    // Visual update
+    updateAllGrids(((currentStep - 1) + PPQ_STEPS) % PPQ_STEPS);
+  }
+
+  function play() {
+    setupAudio();
+    if (ctx.state === 'suspended') ctx.resume();
+    isPlaying = true;
+    btnPlay.textContent = 'Stop';
+    const t0 = ctx.currentTime + 0.05;
+    nextNoteTime = t0;
+    currentStep = 0;
+    if (timerId) clearInterval(timerId);
+    timerId = setInterval(scheduler, lookahead * 1000);
+  }
+
+  function stop() {
+    isPlaying = false;
+    btnPlay.textContent = 'Start';
+    if (timerId) { clearInterval(timerId); timerId = null; }
+  }
+
+  function panic() {
+    stop();
+    synth.panic();
+  }
+
+  // ---------- Event Wiring ----------
+  bpmEl.addEventListener('input', () => {
+    bpm = parseFloat(bpmEl.value); bpmVal.textContent = bpmEl.value;
+  });
+  swingEl.addEventListener('input', () => {
+    swingAmt = parseFloat(swingEl.value); swingVal.textContent = swingEl.value;
+  });
+
+  waveSel.addEventListener('change', ()=>{});
+  cutoff.addEventListener('input', ()=>{
+    cutoffVal.textContent = cutoff.value;
+    if (filterNode) filterNode.frequency.value = parseFloat(cutoff.value);
+  });
+
+  octaveEl.addEventListener('input', ()=> octaveVal.textContent = octaveEl.value);
+  rangeEl.addEventListener('input', ()=> rangeVal.textContent = rangeEl.value);
+  gateEl.addEventListener('input', ()=> gateVal.textContent = gateEl.value);
+  melDurEl.addEventListener('input', ()=> melDurVal.textContent = melDurEl.value);
+
+  attack.addEventListener('input', ()=> attackVal.textContent = attack.value);
+  decay.addEventListener('input', ()=> decayVal.textContent = decay.value);
+  sustain.addEventListener('input', ()=> sustainVal.textContent = sustain.value);
+  release.addEventListener('input', ()=> releaseVal.textContent = release.value);
+
+  rootSel.addEventListener('change', updateMarkovSize);
+  scaleSel.addEventListener('change', () => { updateMarkovSize(); recalcPatterns(); });
+
+  orderSel.addEventListener('change', updateMarkovSize);
+  seedEl.addEventListener('change', ()=> {
+    const seed = parseInt(seedEl.value,10) >>> 0;
+    rng = mulberry32(seed);
+    updateMarkovSize();
+  });
+
+  master.addEventListener('input', ()=> {
+    const v = parseFloat(master.value);
+    masterVal.textContent = v.toFixed(2);
+    if (masterGain) masterGain.gain.value = v;
+  });
+  duck.addEventListener('input', ()=> {
+    const v = parseFloat(duck.value);
+    duckVal.textContent = v.toFixed(2);
+  });
+
+  // Euclidean controls events
+  function bindEuclid(id, track, prop) {
+    const el = ctrl[id], valEl = ctrl[id+'Val'];
+    el.addEventListener('input', ()=>{
+      let v = parseInt(el.value,10);
+      if (prop === 'pulses') v = clamp(v, 0, tr[track].steps);
+      if (prop === 'rotate') v = clamp(v, 0, Math.max(0, tr[track].steps-1));
+      tr[track][prop] = v;
+      valEl.textContent = v;
+      recalcPatterns();
+    });
+  }
+  bindEuclid('kSteps','kick','steps');
+  bindEuclid('kPulses','kick','pulses');
+  bindEuclid('kRotate','kick','rotate');
+  bindEuclid('sSteps','snare','steps');
+  bindEuclid('sPulses','snare','pulses');
+  bindEuclid('sRotate','snare','rotate');
+  bindEuclid('hSteps','hat','steps');
+  bindEuclid('hPulses','hat','pulses');
+  bindEuclid('hRotate','hat','rotate');
+  bindEuclid('mSteps','melody','steps');
+  bindEuclid('mPulses','melody','pulses');
+  bindEuclid('mRotate','melody','rotate');
+
+  // Update pulses bounds when steps change
+  function syncPulseBounds(track, stepsEl, pulsesEl, rotateEl) {
+    const steps = parseInt(stepsEl.value,10);
+    pulsesEl.max = steps;
+    rotateEl.max = Math.max(0, steps-1);
+    if (parseInt(pulsesEl.value,10) > steps) pulsesEl.value = steps;
+  }
+  ctrl.kSteps.addEventListener('input', ()=> syncPulseBounds('kick', ctrl.kSteps, ctrl.kPulses, ctrl.kRotate));
+  ctrl.sSteps.addEventListener('input', ()=> syncPulseBounds('snare', ctrl.sSteps, ctrl.sPulses, ctrl.sRotate));
+  ctrl.hSteps.addEventListener('input', ()=> syncPulseBounds('hat', ctrl.hSteps, ctrl.hPulses, ctrl.hRotate));
+  ctrl.mSteps.addEventListener('input', ()=> syncPulseBounds('melody', ctrl.mSteps, ctrl.mPulses, ctrl.mRotate));
+
+  // Mute/Solo
+  for (const name of ['kick','snare','hat','melody']) {
+    mute[name].addEventListener('change', ()=>{});
+    solo[name].addEventListener('change', ()=>{});
+  }
+
+  // Buttons
+  btnPlay.addEventListener('click', ()=>{
+    if (!isPlaying) play(); else stop();
+  });
+
+  btnRandomize.addEventListener('click', ()=>{
+    // Re-seed
+    seedEl.value = (Math.random()*1e9|0).toString();
+    rng = mulberry32(parseInt(seedEl.value,10)>>>0);
+
+    // Randomize Euclidean
+    const randSteps = () => [8,12,16,20,24,28,32][Math.floor(rng()*7)];
+    tr.kick.steps = randSteps(); tr.kick.pulses = Math.floor(rng()*Math.max(1,tr.kick.steps/4))+1; tr.kick.rotate = Math.floor(rng()*tr.kick.steps);
+    tr.snare.steps = 16; tr.snare.pulses = 2; tr.snare.rotate = [0,4,8,12][Math.floor(rng()*4)];
+    tr.hat.steps = 16; tr.hat.pulses = 7 + (rng()*6|0); tr.hat.rotate = rng()*16|0;
+    tr.melody.steps = 16; tr.melody.pulses = 6 + (rng()*6|0); tr.melody.rotate = rng()*16|0;
+
+    // Push to UI
+    ctrl.kSteps.value = tr.kick.steps; ctrl.kStepsVal.textContent = tr.kick.steps;
+    ctrl.kPulses.max = tr.kick.steps; ctrl.kPulses.value = tr.kick.pulses; ctrl.kPulsesVal.textContent = tr.kick.pulses;
+    ctrl.kRotate.max = tr.kick.steps-1; ctrl.kRotate.value = tr.kick.rotate; ctrl.kRotateVal.textContent = tr.kick.rotate;
+
+    ctrl.sSteps.value = tr.snare.steps; ctrl.sStepsVal.textContent = tr.snare.steps;
+    ctrl.sPulses.max = tr.snare.steps; ctrl.sPulses.value = tr.snare.pulses; ctrl.sPulsesVal.textContent = tr.snare.pulses;
+    ctrl.sRotate.max = tr.snare.steps-1; ctrl.sRotate.value = tr.snare.rotate; ctrl.sRotateVal.textContent = tr.snare.rotate;
+
+    ctrl.hSteps.value = tr.hat.steps; ctrl.hStepsVal.textContent = tr.hat.steps;
+    ctrl.hPulses.max = tr.hat.steps; ctrl.hPulses.value = tr.hat.pulses; ctrl.hPulsesVal.textContent = tr.hat.pulses;
+    ctrl.hRotate.max = tr.hat.steps-1; ctrl.hRotate.value = tr.hat.rotate; ctrl.hRotateVal.textContent = tr.hat.rotate;
+
+    ctrl.mSteps.value = tr.melody.steps; ctrl.mStepsVal.textContent = tr.melody.steps;
+    ctrl.mPulses.max = tr.melody.steps; ctrl.mPulses.value = tr.melody.pulses; ctrl.mPulsesVal.textContent = tr.melody.pulses;
+    ctrl.mRotate.max = tr.melody.steps-1; ctrl.mRotate.value = tr.melody.rotate; ctrl.mRotateVal.textContent = tr.melody.rotate;
+
+    // Randomize scale/root and synth bits slightly
+    const scales = Object.keys(SCALES);
+    scaleSel.value = scales[(rng()*scales.length)|0];
+    rootSel.value = (rng()*12)|0;
+    waveSel.value = ['sawtooth','square','triangle','sine'][(rng()*4)|0];
+    cutoff.value = (400 + rng()*7000 | 0); cutoffVal.textContent = cutoff.value; if (filterNode) filterNode.frequency.value = parseFloat(cutoff.value);
+    octaveEl.value = 3 + (rng()*3|0); octaveVal.textContent = octaveEl.value;
+    rangeEl.value = 1 + (rng()*3|0); rangeVal.textContent = rangeEl.value;
+    gateEl.value = (0.25 + rng()*0.6).toFixed(2); gateVal.textContent = gateEl.value;
+    melDurEl.value = 1 + (rng()*4|0); melDurVal.textContent = melDurEl.value;
+
+    // Reset Markov with new size
+    updateMarkovSize();
+
+    // Train with a small motif around center
+    const sc = SCALES[scaleSel.value];
+    const center = Math.floor(sc.length/2);
+    const motif = [center-1,center,center+1,center,center+2,center,center-2,center].map(x => ((x%sc.length)+sc.length)%sc.length);
+    markov.train(motif);
+
+    recalcPatterns();
+  });
+
+  btnTrain.addEventListener('click', ()=>{
+    const str = (trainEl.value || "").trim();
+    if (!str) return;
+    const tokens = str.split(/\s+/);
+    const seq = parseTrainingTokens(tokens, parseInt(rootSel.value,10), scaleSel.value);
+    if (seq.length > 0) {
+      markov.train(seq);
+    }
+  });
+
+  btnClearTrain.addEventListener('click', ()=>{
+    updateMarkovSize();
+  });
+
+  btnGenSeed.addEventListener('click', ()=>{
+    seedEl.value = (Math.random()*1e9|0).toString();
+    rng = mulberry32(parseInt(seedEl.value,10)>>>0);
+    updateMarkovSize();
+  });
+
+  btnExport.addEventListener('click', ()=>{
+    const preset = {
+      bpm, swingAmt,
+      root: parseInt(rootSel.value,10), scale: scaleSel.value,
+      wave: waveSel.value, cutoff: parseFloat(cutoff.value),
+      octave: parseInt(octaveEl.value,10), range: parseInt(rangeEl.value,10),
+      gate: parseFloat(gateEl.value), melDur: parseInt(melDurEl.value,10),
+      adsr: { attack: parseFloat(attack.value), decay: parseFloat(decay.value), sustain: parseFloat(sustain.value), release: parseFloat(release.value) },
+      order: parseInt(orderSel.value,10), seed: parseInt(seedEl.value,10),
+      patterns: tr,
+      master: parseFloat(master.value), duck: parseFloat(duck.value)
+    };
+    const data = JSON.stringify(preset, null, 2);
+    const blob = new Blob([data], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'procedural_preset.json'; a.click();
+    URL.revokeObjectURL(url);
+  });
+
+  btnImport.addEventListener('click', ()=>{
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'application/json';
+    inp.onchange = async () => {
+      const file = inp.files[0]; if (!file) return;
+      const text = await file.text();
+      try {
+        const p = JSON.parse(text);
+        // Apply
+        bpm = p.bpm ?? bpm; bpmEl.value = bpm; bpmVal.textContent = bpm;
+        swingAmt = p.swingAmt ?? swingAmt; swingEl.value = swingAmt; swingVal.textContent = swingAmt.toFixed(2);
+        rootSel.value = p.root ?? 0;
+        scaleSel.value = p.scale ?? 'Major';
+        waveSel.value = p.wave ?? 'triangle';
+        cutoff.value = p.cutoff ?? 2200; cutoffVal.textContent = cutoff.value; if (filterNode) filterNode.frequency.value = parseFloat(cutoff.value);
+        octaveEl.value = p.octave ?? 4; octaveVal.textContent = octaveEl.value;
+        rangeEl.value = p.range ?? 2; rangeVal.textContent = rangeEl.value;
+        gateEl.value = p.gate ?? 0.45; gateVal.textContent = gateEl.value;
+        melDurEl.value = p.melDur ?? 2; melDurVal.textContent = melDurEl.value;
+        attack.value = p.adsr?.attack ?? 0.01; attackVal.textContent = attack.value;
+        decay.value = p.adsr?.decay ?? 0.25; decayVal.textContent = decay.value;
+        sustain.value = p.adsr?.sustain ?? 0.6; sustainVal.textContent = sustain.value;
+        release.value = p.adsr?.release ?? 0.35; releaseVal.textContent = release.value;
+        orderSel.value = p.order ?? 1;
+        seedEl.value = p.seed ?? 1337; rng = mulberry32(parseInt(seedEl.value,10)>>>0);
+        master.value = p.master ?? 0.8; masterVal.textContent = parseFloat(master.value).toFixed(2); if (masterGain) masterGain.gain.value = parseFloat(master.value);
+        duck.value = p.duck ?? 0.2; duckVal.textContent = parseFloat(duck.value).toFixed(2);
+
+        // Patterns
+        if (p.patterns) {
+          for (const k of ['kick','snare','hat','melody']) {
+            if (p.patterns[k]) {
+              tr[k].steps = p.patterns[k].steps ?? tr[k].steps;
+              tr[k].pulses = p.patterns[k].pulses ?? tr[k].pulses;
+              tr[k].rotate = p.patterns[k].rotate ?? tr[k].rotate;
+            }
+          }
+          // Push UI
+          ctrl.kSteps.value = tr.kick.steps; ctrl.kStepsVal.textContent = tr.kick.steps;
+          ctrl.kPulses.max = tr.kick.steps; ctrl.kPulses.value = tr.kick.pulses; ctrl.kPulsesVal.textContent = tr.kick.pulses;
+          ctrl.kRotate.max = tr.kick.steps-1; ctrl.kRotate.value = tr.kick.rotate; ctrl.kRotateVal.textContent = tr.kick.rotate;
+
+          ctrl.sSteps.value = tr.snare.steps; ctrl.sStepsVal.textContent = tr.snare.steps;
+          ctrl.sPulses.max = tr.snare.steps; ctrl.sPulses.value = tr.snare.pulses; ctrl.sPulsesVal.textContent = tr.snare.pulses;
+          ctrl.sRotate.max = tr.snare.steps-1; ctrl.sRotate.value = tr.snare.rotate; ctrl.sRotateVal.textContent = tr.snare.rotate;
+
+          ctrl.hSteps.value = tr.hat.steps; ctrl.hStepsVal.textContent = tr.hat.steps;
+          ctrl.hPulses.max = tr.hat.steps; ctrl.hPulses.value = tr.hat.pulses; ctrl.hPulsesVal.textContent = tr.hat.pulses;
+          ctrl.hRotate.max = tr.hat.steps-1; ctrl.hRotate.value = tr.hat.rotate; ctrl.hRotateVal.textContent = tr.hat.rotate;
+
+          ctrl.mSteps.value = tr.melody.steps; ctrl.mStepsVal.textContent = tr.melody.steps;
+          ctrl.mPulses.max = tr.melody.steps; ctrl.mPulses.value = tr.melody.pulses; ctrl.mPulsesVal.textContent = tr.melody.pulses;
+          ctrl.mRotate.max = tr.melody.steps-1; ctrl.mRotate.value = tr.melody.rotate; ctrl.mRotateVal.textContent = tr.melody.rotate;
+        }
+        updateMarkovSize();
+        recalcPatterns();
+      } catch (e) {
+        alert('Invalid preset file');
+        console.error(e);
+      }
+    };
+    inp.click();
+  });
+
+  // Misc small UX
+  trainEl.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') btnTrain.click(); });
+  btnPanic.addEventListener('click', panic);
+
+  // Initialize labels and state
+  bpmVal.textContent = bpmEl.value;
+  swingVal.textContent = swingEl.value;
+  cutoffVal.textContent = cutoff.value;
+  octaveVal.textContent = octaveEl.value;
+  rangeVal.textContent = rangeEl.value;
+  gateVal.textContent = gateEl.value;
+  melDurVal.textContent = melDurEl.value;
+  attackVal.textContent = attack.value;
+  decayVal.textContent = decay.value;
+  sustainVal.textContent = sustain.value;
+  releaseVal.textContent = release.value;
+  masterVal.textContent = parseFloat(master.value).toFixed(2);
+  duckVal.textContent = parseFloat(duck.value).toFixed(2);
+
+  // Initial patterns/markov/grids
+  updateMarkovSize();
+  recalcPatterns();
+  updateAllGrids(-1);
+
+  // Resume audio context on first user gesture if needed
+  window.addEventListener('click', () => {
+    if (ctx && ctx.state === 'suspended') ctx.resume();
+  }, { once: true });
+
+})();
+</script>
+</body>
+</html>
