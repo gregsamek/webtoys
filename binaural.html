@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Binaural Beats / Tone Generator (Single‑file, No Dependencies)</title>
+<style>
+  :root{
+    --bg:#0f1117; --panel:#151822; --muted:#9aa4b2; --text:#e6e9ef;
+    --accent:#6ab0ff; --accent2:#a1e868; --danger:#ff6b6b;
+    --border:#23283a; --focus: #2c6bed;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+  }
+  header{
+    padding:16px 20px; border-bottom:1px solid var(--border);
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    background: linear-gradient(180deg, #121521 0%, #0f1117 100%);
+    position:sticky; top:0; z-index:10;
+  }
+  header h1{font-size:16px; font-weight:600; margin:0}
+  header .subtitle{font-size:12px; color:var(--muted)}
+  header .right{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+  header button{
+    background: var(--accent); color:#041019; border:none; border-radius:8px;
+    padding:10px 14px; font-weight:700; cursor:pointer;
+  }
+  header button#playBtn.playing{background: var(--danger); color:#fff}
+  header button.secondary{
+    background:#222637; color: var(--text); border:1px solid var(--border);
+  }
+  main{
+    display:grid; grid-template-columns: 1.2fr 1fr; gap:14px;
+    padding:14px; max-width:1100px; margin:0 auto;
+  }
+  @media (max-width: 900px){ main{ grid-template-columns: 1fr; } }
+  .card{
+    background:var(--panel); border:1px solid var(--border);
+    border-radius:12px; padding:14px;
+  }
+  .card h2{margin:0 0 8px 0; font-size:14px; color:#dbe2ee}
+  .row{
+    display:grid; grid-template-columns: 1fr auto; gap:10px; align-items:center;
+    margin:10px 0;
+  }
+  .row .inputs{display:flex; gap:8px; align-items:center; justify-content:flex-end; flex-wrap:wrap}
+  .row label{color:var(--muted); font-size:12px}
+  .row .value{ min-width:60px; text-align:right; font-variant-numeric: tabular-nums; }
+  .ctrl{
+    display:flex; flex-direction:column; gap:6px; padding:8px; border:1px solid var(--border); border-radius:10px;
+  }
+  .ctrl h3{margin:0; font-size:12px; color:#cfd7e6; letter-spacing:0.02em}
+  input[type="range"]{
+    width: 210px; height: 28px; background:transparent;
+    -webkit-appearance: none; appearance: none;
+  }
+  input[type="range"]::-webkit-slider-runnable-track{
+    height:6px; background:#22273a; border-radius:999px; border:1px solid #1d2030;
+  }
+  input[type="range"]::-webkit-slider-thumb{
+    -webkit-appearance:none; appearance:none; margin-top:-6px;
+    width:18px; height:18px; border-radius:50%; background:var(--accent);
+    border:1px solid #1d2030; box-shadow: 0 0 0 2px rgba(106,176,255,0.15);
+  }
+  input[type="range"]::-moz-range-track{
+    height:6px; background:#22273a; border-radius:999px; border:1px solid #1d2030;
+  }
+  input[type="range"]::-moz-range-thumb{
+    width:18px; height:18px; border-radius:50%; background:var(--accent);
+    border:1px solid #1d2030;
+  }
+  input[type="number"], select, input[type="text"]{
+    background:#0f1322; border:1px solid #262b40; color:var(--text);
+    padding:8px 10px; border-radius:8px; min-width:90px;
+  }
+  input[type="checkbox"]{ transform: translateY(2px); }
+  .inline{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .grid-2{ display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
+  .preset-bar{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+  .preset-bar button{ padding:8px 10px; border-radius:8px; border:1px solid var(--border); background:#222637; color:var(--text); cursor:pointer }
+  .preset-bar button.primary{ background: var(--accent2); color:#0b1a09; border-color:#2c392b; font-weight:700 }
+  .note{ color: var(--muted); font-size:12px; line-height:1.4 }
+  .pill{
+    padding:6px 8px; border:1px solid var(--border); border-radius:999px; color:var(--muted); font-size:12px;
+    display:inline-flex; align-items:center; gap:6px;
+  }
+  .stats{ display:flex; gap:8px; flex-wrap:wrap }
+  .divider{ height:1px; background:var(--border); margin:10px 0 }
+  .footer{ padding:12px 14px; color:var(--muted); font-size:12px; text-align:center }
+  a { color: #8cc1ff; text-decoration: none; }
+  a:hover{ text-decoration: underline }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Binaural Beats / Tone Generator</h1>
+    <div class="subtitle">Single-file, dependency-free WebAudio app with ADSR envelopes and presets</div>
+  </div>
+  <div class="right">
+    <button id="playBtn">Play</button>
+    <button id="gateBtn" class="secondary" title="Re-trigger envelope while playing">Gate</button>
+    <span class="pill">Volume
+      <input id="volume" type="range" min="0" max="1" step="0.01" value="0.4" />
+    </span>
+  </div>
+</header>
+
+<main>
+  <section class="card">
+    <h2>Generator</h2>
+
+    <div class="ctrl">
+      <div class="inline">
+        <label for="waveform">Waveform</label>
+        <select id="waveform">
+          <option value="sine">Sine</option>
+          <option value="triangle">Triangle</option>
+          <option value="square">Square</option>
+          <option value="sawtooth">Sawtooth</option>
+        </select>
+        <label class="inline" title="If enabled: Left = Base, Right = Base + Beat. If disabled: split ±Beat/2">
+          <input type="checkbox" id="rightOnly" /> Right-only offset
+        </label>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="baseFreq">Base Frequency (Hz)</label>
+        </div>
+        <div class="inputs">
+          <input id="baseFreq" type="range" min="20" max="1200" step="0.1" value="220" />
+          <input id="baseFreqNum" type="number" min="20" max="20000" step="0.1" value="220" />
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label for="beatFreq">Beat Frequency (Hz)</label>
+        </div>
+        <div class="inputs">
+          <input id="beatFreq" type="range" min="0" max="60" step="0.1" value="10" />
+          <input id="beatFreqNum" type="number" min="0" max="200" step="0.1" value="10" />
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="grid-2">
+        <div class="row">
+          <div><label for="attack">Attack (s)</label></div>
+          <div class="inputs">
+            <input id="attack" type="range" min="0" max="10" step="0.01" value="0.50" />
+            <input id="attackNum" type="number" min="0" max="60" step="0.01" value="0.50" />
+          </div>
+        </div>
+        <div class="row">
+          <div><label for="decay">Decay (s)</label></div>
+          <div class="inputs">
+            <input id="decay" type="range" min="0" max="10" step="0.01" value="0.50" />
+            <input id="decayNum" type="number" min="0" max="60" step="0.01" value="0.50" />
+          </div>
+        </div>
+        <div class="row">
+          <div><label for="sustain">Sustain (0–1)</label></div>
+          <div class="inputs">
+            <input id="sustain" type="range" min="0" max="1" step="0.01" value="0.7" />
+            <input id="sustainNum" type="number" min="0" max="1" step="0.01" value="0.7" />
+          </div>
+        </div>
+        <div class="row">
+          <div><label for="release">Release (s)</label></div>
+          <div class="inputs">
+            <input id="release" type="range" min="0" max="20" step="0.01" value="1.20" />
+            <input id="releaseNum" type="number" min="0" max="60" step="0.01" value="1.20" />
+          </div>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="stats">
+        <div class="pill">Left: <strong id="leftHz">215.00</strong> Hz</div>
+        <div class="pill">Right: <strong id="rightHz">225.00</strong> Hz</div>
+        <div class="pill">Beat: <strong id="beatHz">10.00</strong> Hz</div>
+      </div>
+    </div>
+
+    <div class="note" style="margin-top:10px">
+      Tip: For classic binaural beats, use two pure sines with a small frequency difference (e.g., 4–12 Hz). Use headphones. Keep volume moderate.
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Presets</h2>
+    <div class="ctrl">
+      <div class="preset-bar">
+        <select id="presetSelect" title="Saved presets" style="min-width:220px"></select>
+        <input id="presetName" type="text" placeholder="Preset name" style="min-width:160px" />
+        <button id="savePresetBtn" class="primary">Save</button>
+        <button id="updatePresetBtn">Update</button>
+        <button id="deletePresetBtn">Delete</button>
+      </div>
+      <div class="preset-bar">
+        <button id="exportBtn">Export Presets</button>
+        <button id="importBtn">Import Presets</button>
+        <input id="importFile" type="file" accept="application/json,.json" style="display:none" />
+      </div>
+      <div class="divider"></div>
+      <div class="note">
+        Presets are stored in your browser via localStorage. You can export to a JSON file and import later.
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <h2>Safety</h2>
+    <div class="note">
+      - Use headphones for binaural effects. Start with low volume.<br/>
+      - Avoid very high volumes or long continuous sessions if you feel discomfort.<br/>
+      - This tool is not a medical device.
+    </div>
+  </section>
+</main>
+
+<div class="footer">
+  Made with the Web Audio API. No external libraries. Works offline once loaded.
+</div>
+
+<script>
+(() => {
+  // --- Audio Engine State ---
+  let ctx = null;
+  let nodes = null; // will hold current graph nodes while playing
+  let isPlaying = false;
+  let lastGateTime = 0;
+
+  const storageKeys = {
+    presets: 'bb_presets_v1',
+    last: 'bb_last_state_v1'
+  };
+
+  // --- UI Elements ---
+  const el = {
+    playBtn: document.getElementById('playBtn'),
+    gateBtn: document.getElementById('gateBtn'),
+    volume: document.getElementById('volume'),
+    waveform: document.getElementById('waveform'),
+    rightOnly: document.getElementById('rightOnly'),
+
+    baseFreq: document.getElementById('baseFreq'),
+    baseFreqNum: document.getElementById('baseFreqNum'),
+    beatFreq: document.getElementById('beatFreq'),
+    beatFreqNum: document.getElementById('beatFreqNum'),
+
+    attack: document.getElementById('attack'),
+    attackNum: document.getElementById('attackNum'),
+    decay: document.getElementById('decay'),
+    decayNum: document.getElementById('decayNum'),
+    sustain: document.getElementById('sustain'),
+    sustainNum: document.getElementById('sustainNum'),
+    release: document.getElementById('release'),
+    releaseNum: document.getElementById('releaseNum'),
+
+    leftHz: document.getElementById('leftHz'),
+    rightHz: document.getElementById('rightHz'),
+    beatHz: document.getElementById('beatHz'),
+
+    presetSelect: document.getElementById('presetSelect'),
+    presetName: document.getElementById('presetName'),
+    savePresetBtn: document.getElementById('savePresetBtn'),
+    updatePresetBtn: document.getElementById('updatePresetBtn'),
+    deletePresetBtn: document.getElementById('deletePresetBtn'),
+    exportBtn: document.getElementById('exportBtn'),
+    importBtn: document.getElementById('importBtn'),
+    importFile: document.getElementById('importFile'),
+  };
+
+  // --- Helpers ---
+  const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+  const now = () => (ctx ? ctx.currentTime : 0);
+
+  function mkContext() {
+    if (!ctx) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      ctx = new AC({ latencyHint: 'interactive' });
+    }
+    return ctx;
+  }
+
+  function setParamSmooth(param, value, time = 0.04) {
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    try { param.cancelAndHoldAtTime?.(t0); } catch {}
+    param.cancelScheduledValues(t0);
+    const cur = param.value;
+    param.setValueAtTime(cur, t0);
+    param.linearRampToValueAtTime(value, t0 + Math.max(0.01, time));
+  }
+
+  function getSettings() {
+    return {
+      baseFreq: parseFloat(el.baseFreqNum.value),
+      beatFreq: parseFloat(el.beatFreqNum.value),
+      waveform: el.waveform.value,
+      rightOnly: el.rightOnly.checked,
+      volume: parseFloat(el.volume.value),
+      adsr: {
+        attack: parseFloat(el.attackNum.value),
+        decay: parseFloat(el.decayNum.value),
+        sustain: parseFloat(el.sustainNum.value),
+        release: parseFloat(el.releaseNum.value),
+      }
+    };
+  }
+
+  function lrFrequencies({ baseFreq, beatFreq, rightOnly }) {
+    let left = baseFreq, right = baseFreq;
+    if (rightOnly) {
+      right = baseFreq + beatFreq;
+      // constrain to audible range
+      right = clamp(right, 1, 20000);
+    } else {
+      left = baseFreq - beatFreq/2;
+      right = baseFreq + beatFreq/2;
+      left = clamp(left, 1, 20000);
+      right = clamp(right, 1, 20000);
+    }
+    const beat = Math.abs(right - left);
+    return { left, right, beat };
+  }
+
+  function updateDisplay() {
+    const settings = getSettings();
+    const { left, right, beat } = lrFrequencies(settings);
+    el.leftHz.textContent = left.toFixed(2);
+    el.rightHz.textContent = right.toFixed(2);
+    el.beatHz.textContent = beat.toFixed(2);
+  }
+
+  function buildGraph() {
+    mkContext();
+    const settings = getSettings();
+
+    const oscL = ctx.createOscillator();
+    const oscR = ctx.createOscillator();
+    const gainL = ctx.createGain();
+    const gainR = ctx.createGain();
+    const merger = ctx.createChannelMerger(2);
+    const envGain = ctx.createGain();
+    const volGain = ctx.createGain();
+
+    // initial values
+    oscL.type = settings.waveform;
+    oscR.type = settings.waveform;
+    const { left, right } = lrFrequencies(settings);
+    oscL.frequency.value = left;
+    oscR.frequency.value = right;
+
+    gainL.gain.value = 1;
+    gainR.gain.value = 1;
+    envGain.gain.value = 0;        // envelope starts closed
+    volGain.gain.value = settings.volume; // user volume
+
+    // Connect: oscL -> gainL -> merger[0]
+    //          oscR -> gainR -> merger[1]
+    //          merger -> envGain -> volGain -> destination
+    oscL.connect(gainL);
+    gainL.connect(merger, 0, 0);
+    oscR.connect(gainR);
+    gainR.connect(merger, 0, 1);
+    merger.connect(envGain);
+    envGain.connect(volGain);
+    volGain.connect(ctx.destination);
+
+    oscL.start();
+    oscR.start();
+
+    nodes = { oscL, oscR, gainL, gainR, merger, envGain, volGain };
+
+    return nodes;
+  }
+
+  function applyADSR(gainParam, adsr, gateOn) {
+    if (!ctx) return;
+    const t0 = ctx.currentTime;
+    const A = Math.max(0, adsr.attack);
+    const D = Math.max(0, adsr.decay);
+    const S = clamp(adsr.sustain, 0, 1);
+    const R = Math.max(0, adsr.release);
+
+    if (gateOn) {
+      // Attack -> Decay -> Sustain
+      gainParam.cancelScheduledValues(t0);
+      try { gainParam.cancelAndHoldAtTime?.(t0); } catch {}
+      gainParam.setValueAtTime(0, t0);
+      if (A > 0) {
+        gainParam.linearRampToValueAtTime(1, t0 + A);
+      } else {
+        gainParam.setValueAtTime(1, t0);
+      }
+      if (D > 0) {
+        gainParam.linearRampToValueAtTime(S, t0 + A + D);
+      } else {
+        gainParam.setValueAtTime(S, t0 + A);
+      }
+      lastGateTime = t0;
+    } else {
+      // Release
+      try { gainParam.cancelAndHoldAtTime?.(t0); } catch {}
+      gainParam.cancelScheduledValues(t0);
+      // Hold current level
+      const current = gainParam.value;
+      gainParam.setValueAtTime(current, t0);
+      if (R > 0) {
+        gainParam.linearRampToValueAtTime(0, t0 + R);
+      } else {
+        gainParam.setValueAtTime(0, t0);
+      }
+    }
+  }
+
+  function startPlayback({ retrigger = true } = {}) {
+    if (isPlaying) {
+      if (retrigger && nodes) {
+        applyADSR(nodes.envGain.gain, getSettings().adsr, true);
+      }
+      return;
+    }
+    mkContext().resume(); // ensure resumed by a gesture
+    buildGraph();
+    isPlaying = true;
+    el.playBtn.textContent = 'Stop';
+    el.playBtn.classList.add('playing');
+    // Open the envelope
+    applyADSR(nodes.envGain.gain, getSettings().adsr, true);
+  }
+
+  function stopPlayback() {
+    if (!isPlaying || !nodes) return;
+    const { envGain, oscL, oscR, volGain } = nodes;
+    const R = Math.max(0, getSettings().adsr.release);
+    // Close the envelope
+    applyADSR(envGain.gain, getSettings().adsr, false);
+
+    // Schedule stop after release tail
+    const stopAt = ctx.currentTime + R + 0.05;
+    try { oscL.stop(stopAt); oscR.stop(stopAt); } catch {}
+    // Cleanup a little later
+    setTimeout(() => {
+      try {
+        oscL.disconnect(); oscR.disconnect();
+        volGain.disconnect();
+      } catch {}
+      nodes = null;
+    }, (R + 0.2) * 1000);
+
+    isPlaying = false;
+    el.playBtn.textContent = 'Play';
+    el.playBtn.classList.remove('playing');
+  }
+
+  function gateOnce() {
+    if (!isPlaying) startPlayback({ retrigger: true });
+    else applyADSR(nodes.envGain.gain, getSettings().adsr, true);
+  }
+
+  function updateEngineFromUI() {
+    updateDisplay();
+    saveLastState();
+    if (!isPlaying || !nodes) return;
+
+    const settings = getSettings();
+    // Volume
+    setParamSmooth(nodes.volGain.gain, settings.volume, 0.03);
+    // Waveform
+    nodes.oscL.type = settings.waveform;
+    nodes.oscR.type = settings.waveform;
+    // Frequencies
+    const { left, right } = lrFrequencies(settings);
+    setParamSmooth(nodes.oscL.frequency, left, 0.04);
+    setParamSmooth(nodes.oscR.frequency, right, 0.04);
+  }
+
+  // --- Bind paired sliders and numbers ---
+  function bindPair(rangeEl, numEl, onChange) {
+    const sync = () => { numEl.value = rangeEl.value; onChange?.(); };
+    const syncBack = () => { rangeEl.value = numEl.value; onChange?.(); };
+    rangeEl.addEventListener('input', sync);
+    numEl.addEventListener('input', syncBack);
+  }
+
+  // --- Presets ---
+  function defaultPresets() {
+    return [
+      { name: 'Delta Calm (2 Hz, 200 Hz)', baseFreq: 200, beatFreq: 2, waveform: 'sine', rightOnly: false, volume: 0.35, adsr: {attack:0.8,decay:0.7,sustain:0.7,release:1.2} },
+      { name: 'Theta Relax (6 Hz, 220 Hz)', baseFreq: 220, beatFreq: 6, waveform: 'sine', rightOnly: false, volume: 0.35, adsr: {attack:0.6,decay:0.6,sustain:0.7,release:1.0} },
+      { name: 'Alpha Focus (10 Hz, 250 Hz)', baseFreq: 250, beatFreq: 10, waveform: 'sine', rightOnly: false, volume: 0.35, adsr: {attack:0.4,decay:0.4,sustain:0.7,release:0.9} },
+      { name: 'Beta Alert (20 Hz, 300 Hz)', baseFreq: 300, beatFreq: 20, waveform: 'sine', rightOnly: false, volume: 0.3, adsr: {attack:0.25,decay:0.25,sustain:0.6,release:0.8} },
+      { name: 'Gamma Buzz (40 Hz, 400 Hz)', baseFreq: 400, beatFreq: 40, waveform: 'sine', rightOnly: false, volume: 0.25, adsr: {attack:0.2,decay:0.2,sustain:0.5,release:0.6} },
+      { name: 'Right-Only Demo (7 Hz, 240 Hz)', baseFreq: 240, beatFreq: 7, waveform: 'sine', rightOnly: true, volume: 0.35, adsr: {attack:0.5,decay:0.5,sustain:0.7,release:1.0} },
+    ];
+  }
+
+  function loadPresets() {
+    let list = [];
+    try {
+      const s = localStorage.getItem(storageKeys.presets);
+      if (s) list = JSON.parse(s);
+    } catch {}
+    if (!Array.isArray(list) || list.length === 0) {
+      list = defaultPresets();
+      localStorage.setItem(storageKeys.presets, JSON.stringify(list));
+    }
+    return list;
+  }
+
+  function savePresets(list) {
+    localStorage.setItem(storageKeys.presets, JSON.stringify(list));
+    populatePresetSelect();
+  }
+
+  function populatePresetSelect() {
+    const list = loadPresets();
+    el.presetSelect.innerHTML = '';
+    list.forEach((p, i) => {
+      const opt = document.createElement('option');
+      opt.value = String(i);
+      opt.textContent = p.name;
+      el.presetSelect.appendChild(opt);
+    });
+  }
+
+  function applyPreset(p) {
+    if (!p) return;
+    el.waveform.value = p.waveform || 'sine';
+    el.rightOnly.checked = !!p.rightOnly;
+
+    el.baseFreq.value = p.baseFreq; el.baseFreqNum.value = p.baseFreq;
+    el.beatFreq.value = p.beatFreq; el.beatFreqNum.value = p.beatFreq;
+
+    el.volume.value = p.volume ?? 0.35;
+
+    if (p.adsr) {
+      el.attack.value = p.adsr.attack; el.attackNum.value = p.adsr.attack;
+      el.decay.value = p.adsr.decay; el.decayNum.value = p.adsr.decay;
+      el.sustain.value = p.adsr.sustain; el.sustainNum.value = p.adsr.sustain;
+      el.release.value = p.adsr.release; el.releaseNum.value = p.adsr.release;
+    }
+    updateEngineFromUI();
+  }
+
+  function saveCurrentAsPreset(name) {
+    name = (name || '').trim();
+    if (!name) { alert('Enter a preset name.'); return; }
+    const p = { name, ...getSettings() };
+    const list = loadPresets();
+    list.push(p);
+    savePresets(list);
+    el.presetName.value = '';
+    el.presetSelect.value = String(list.length - 1);
+  }
+
+  function updateSelectedPreset() {
+    const idx = parseInt(el.presetSelect.value, 10);
+    const list = loadPresets();
+    if (isNaN(idx) || !list[idx]) { alert('Select a preset to update.'); return; }
+    const updated = { ...list[idx], ...getSettings() };
+    updated.name = el.presetName.value.trim() || list[idx].name;
+    list[idx] = updated;
+    savePresets(list);
+  }
+
+  function deleteSelectedPreset() {
+    const idx = parseInt(el.presetSelect.value, 10);
+    const list = loadPresets();
+    if (isNaN(idx) || !list[idx]) { alert('Select a preset to delete.'); return; }
+    if (!confirm(`Delete preset "${list[idx].name}"?`)) return;
+    list.splice(idx, 1);
+    savePresets(list);
+  }
+
+  function exportPresets() {
+    const list = loadPresets();
+    const blob = new Blob([JSON.stringify(list, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'binaural-presets.json';
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function importPresetsFromFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(String(reader.result));
+        if (!Array.isArray(data)) throw new Error('Invalid preset file.');
+        // Merge: append new, avoid exact duplicates by name+settings
+        const existing = loadPresets();
+        const serialize = (p) => JSON.stringify({ ...p, name: p.name.trim() });
+        const set = new Set(existing.map(serialize));
+        data.forEach(p => {
+          if (p && p.name && !set.has(serialize(p))) existing.push(p);
+        });
+        savePresets(existing);
+        alert('Presets imported.');
+      } catch (e) {
+        alert('Import failed: ' + e.message);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function saveLastState() {
+    const state = getSettings();
+    try { localStorage.setItem(storageKeys.last, JSON.stringify(state)); } catch {}
+  }
+
+  function loadLastState() {
+    try {
+      const s = localStorage.getItem(storageKeys.last);
+      if (!s) return;
+      const st = JSON.parse(s);
+      if (!st) return;
+      el.waveform.value = st.waveform || 'sine';
+      el.rightOnly.checked = !!st.rightOnly;
+      el.baseFreq.value = st.baseFreq; el.baseFreqNum.value = st.baseFreq;
+      el.beatFreq.value = st.beatFreq; el.beatFreqNum.value = st.beatFreq;
+      el.volume.value = st.volume ?? 0.35;
+      if (st.adsr) {
+        el.attack.value = st.adsr.attack; el.attackNum.value = st.adsr.attack;
+        el.decay.value = st.adsr.decay; el.decayNum.value = st.adsr.decay;
+        el.sustain.value = st.adsr.sustain; el.sustainNum.value = st.adsr.sustain;
+        el.release.value = st.adsr.release; el.releaseNum.value = st.adsr.release;
+      }
+    } catch {}
+  }
+
+  // --- Event wiring ---
+  bindPair(el.baseFreq, el.baseFreqNum, updateEngineFromUI);
+  bindPair(el.beatFreq, el.beatFreqNum, updateEngineFromUI);
+  bindPair(el.attack, el.attackNum, () => {});
+  bindPair(el.decay, el.decayNum, () => {});
+  bindPair(el.sustain, el.sustainNum, () => {});
+  bindPair(el.release, el.releaseNum, () => {});
+
+  el.waveform.addEventListener('change', updateEngineFromUI);
+  el.rightOnly.addEventListener('change', updateEngineFromUI);
+  el.volume.addEventListener('input', updateEngineFromUI);
+
+  el.playBtn.addEventListener('click', () => {
+    if (!isPlaying) startPlayback({ retrigger: true });
+    else stopPlayback();
+  });
+
+  el.gateBtn.addEventListener('click', () => gateOnce());
+
+  // Keyboard: space toggles Play, Enter gates
+  window.addEventListener('keydown', (e) => {
+    if (e.repeat) return;
+    if (e.code === 'Space') { e.preventDefault(); el.playBtn.click(); }
+    if (e.code === 'Enter') { e.preventDefault(); el.gateBtn.click(); }
+  });
+
+  // Preset UI
+  el.savePresetBtn.addEventListener('click', () => saveCurrentAsPreset(el.presetName.value));
+  el.updatePresetBtn.addEventListener('click', updateSelectedPreset);
+  el.deletePresetBtn.addEventListener('click', deleteSelectedPreset);
+  el.presetSelect.addEventListener('change', () => {
+    const idx = parseInt(el.presetSelect.value, 10);
+    const p = loadPresets()[idx];
+    el.presetName.value = p?.name || '';
+    applyPreset(p);
+  });
+  el.exportBtn.addEventListener('click', exportPresets);
+  el.importBtn.addEventListener('click', () => el.importFile.click());
+  el.importFile.addEventListener('change', () => importPresetsFromFile(el.importFile.files[0]));
+
+  // Initialize
+  populatePresetSelect();
+  loadLastState();
+  updateDisplay();
+
+  // Select first preset name into input
+  const firstP = loadPresets()[0];
+  if (firstP) el.presetName.value = firstP.name;
+
+  // On visibility change, reduce volume gently if tab hidden (optional nicety)
+  document.addEventListener('visibilitychange', () => {
+    if (!nodes) return;
+    if (document.hidden) setParamSmooth(nodes.volGain.gain, parseFloat(el.volume.value) * 0.6, 0.2);
+    else setParamSmooth(nodes.volGain.gain, parseFloat(el.volume.value), 0.15);
+  });
+
+  // iOS/safari unlock hint
+  document.body.addEventListener('click', () => { if (ctx && ctx.state === 'suspended') ctx.resume(); }, { once: true });
+
+})();
+</script>
+</body>
+</html>
