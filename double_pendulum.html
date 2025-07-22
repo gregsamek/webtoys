@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>Double Pendulum — Energy Trails</title>
+<style>
+  :root {
+    --bg: #0b0f15;
+    --fg: #e8eef6;
+    --fg-dim: #b8c3d4;
+    --accent: #4cc9f0;
+    --panel: #121824;
+    --panel2: #0f1520;
+    --btn: #1a2233;
+    --btn-hover: #24304a;
+    --danger: #f94144;
+    --ok: #72efdd;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
+  }
+  html, body {
+    margin: 0; padding: 0; height: 100%; background: var(--bg); color: var(--fg); font-family: var(--sans);
+  }
+  #app {
+    position: fixed; inset: 0; overflow: hidden; background: radial-gradient(1200px 700px at 60% 20%, #0b1220, #0b0f15 60%);
+  }
+  .layer {
+    position: absolute; inset: 0; display: block; width: 100%; height: 100%;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* Controls */
+  .controls {
+    position: absolute; top: 10px; left: 10px; z-index: 10;
+    background: linear-gradient(180deg, var(--panel), var(--panel2));
+    border: 1px solid #1e293b; border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(0,0,0,0.45);
+    padding: 10px 10px 8px; min-width: 290px; max-width: min(92vw, 460px);
+    backdrop-filter: blur(6px);
+  }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .row + .row { margin-top: 8px; }
+  .title {
+    font-weight: 700; letter-spacing: .3px; color: var(--fg);
+    display: flex; align-items: center; gap: 8px; font-size: 15px; margin-bottom: 6px;
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--btn); border: 1px solid #24324a; padding: 6px 10px; border-radius: 8px; color: var(--fg);
+    font-size: 13px; cursor: pointer; user-select: none;
+  }
+  .pill:hover { background: var(--btn-hover); }
+  .pill[data-pressed="true"] { outline: 1px solid var(--accent); box-shadow: 0 0 0 2px rgba(76,201,240,0.15) inset; }
+  .danger { color: #fff; border-color: #3b1c22; background: #2a0f14; }
+  .danger:hover { background: #3a141b; }
+  .ok { border-color: #17322f; background: #0f221f; }
+  .ok:hover { background: #15302c; }
+  .grow { flex: 1; }
+  .label { font-size: 12px; color: var(--fg-dim); }
+  .val { font-family: var(--mono); color: var(--fg); }
+  .subtle { color: var(--fg-dim); font-size: 12px; }
+  input[type="range"] { width: 120px; }
+  input[type="number"], select {
+    background: var(--btn); color: var(--fg); border: 1px solid #24324a; border-radius: 6px;
+    padding: 6px 8px; font: inherit; font-size: 13px; width: 80px;
+  }
+  .grid {
+    display: grid; grid-template-columns: auto 1fr auto auto; gap: 6px 8px; align-items: center;
+  }
+  .hr { height: 1px; background: #1e293b; margin: 8px 0; }
+  .small { font-size: 11px; }
+
+  /* HUD */
+  .hud {
+    position: absolute; right: 10px; top: 10px; z-index: 10;
+    background: linear-gradient(180deg, #0e1420, #0c111b);
+    border: 1px solid #1d2533; border-radius: 10px; padding: 8px 10px;
+    min-width: 220px; color: var(--fg-dim);
+  }
+  .bar {
+    height: 8px; width: 100%;
+    background: #0c1220; border: 1px solid #1e293b; border-radius: 999px;
+    overflow: hidden;
+  }
+  .bar > i {
+    display: block; height: 100%; width: 0%;
+    background: linear-gradient(90deg, #32d5ff, #72efdd 30%, #ffca3a 70%, #ff595e);
+  }
+  a.btn {
+    text-decoration: none; color: var(--fg); background: var(--btn);
+    padding: 6px 10px; border: 1px solid #24324a; border-radius: 8px; display: inline-flex; align-items: center;
+  }
+  a.btn:hover { background: var(--btn-hover); }
+  .kbd {
+    font-family: var(--mono); font-size: 11px; padding: 1px 5px; background: #0e1625; border: 1px solid #1d2a42; border-radius: 4px; color: #88a1c4;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="layer"><canvas id="trail"></canvas></div>
+  <div class="layer"><canvas id="pendulum"></canvas></div>
+
+  <div class="controls" id="controls">
+    <div class="title">
+      <span>Double Pendulum</span>
+      <span class="subtle">— Energy Trails</span>
+    </div>
+
+    <div class="row">
+      <button id="btnPlay" class="pill ok" title="Space">⏵ Play</button>
+      <button id="btnStep" class="pill" title="Step once (.)">Step</button>
+      <button id="btnReset" class="pill" title="R">Reset</button>
+      <button id="btnRandom" class="pill" title="Shuffle initial angles">Randomize</button>
+      <button id="btnClear" class="pill danger" title="Clear trails">Clear Trails</button>
+      <a id="btnSave" class="btn" download="double-pendulum.png" href="#">Save</a>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="grid">
+      <div class="label">Length 1</div>
+      <input id="l1" type="range" min="40" max="280" step="1"><div class="val" id="l1v"></div><div class="subtle">px</div>
+      <div class="label">Length 2</div>
+      <input id="l2" type="range" min="40" max="280" step="1"><div class="val" id="l2v"></div><div class="subtle">px</div>
+
+      <div class="label">Mass 1</div>
+      <input id="m1" type="range" min="1" max="40" step="1"><div class="val" id="m1v"></div><div class="subtle">kg</div>
+      <div class="label">Mass 2</div>
+      <input id="m2" type="range" min="1" max="40" step="1"><div class="val" id="m2v"></div><div class="subtle">kg</div>
+
+      <div class="label">Gravity</div>
+      <input id="g" type="range" min="100" max="1500" step="10"><div class="val" id="gv"></div><div class="subtle">px/s²</div>
+
+      <div class="label">Damping</div>
+      <input id="damp" type="range" min="0" max="2" step="0.01"><div class="val" id="dampv"></div><div class="subtle">1/s</div>
+
+      <div class="label">Trail fade</div>
+      <input id="fade" type="range" min="0" max="8" step="0.05"><div class="val" id="fadev"></div><div class="subtle">half-life s</div>
+
+      <div class="label">Steps/frame</div>
+      <input id="spf" type="range" min="1" max="8" step="1"><div class="val" id="spfv"></div><div class="subtle"></div>
+
+      <div class="label">Color by</div>
+      <select id="mode">
+        <option value="total">Total energy</option>
+        <option value="kin">Kinetic energy</option>
+        <option value="pot">Potential energy</option>
+        <option value="speed">Speed |v₂|</option>
+      </select><div></div><div></div>
+
+      <div class="label">Auto scale</div>
+      <label class="pill" style="padding:4px 8px">
+        <input id="autoscale" type="checkbox" checked> <span style="margin-left:6px">on</span>
+      </label><div></div><div></div>
+
+      <div class="label">Lock energy</div>
+      <label class="pill" style="padding:4px 8px" title="Rescales velocities to keep E≈E₀">
+        <input id="lockE" type="checkbox"> <span style="margin-left:6px">off</span>
+      </label><div></div><div></div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="small">
+      Tips: Space to play/pause, R to reset, . to step. Trails are colored by the selected metric and slowly fade (set fade=0 for persistent art). Save produces a PNG of the current scene.
+    </div>
+  </div>
+
+  <div class="hud">
+    <div class="row" style="justify-content: space-between;">
+      <div>Energy (current / initial)</div>
+      <div class="val" id="eNow">—</div>
+    </div>
+    <div class="bar" style="margin-top:6px;margin-bottom:6px;"><i id="eBar"></i></div>
+    <div class="row" style="justify-content: space-between;">
+      <div class="subtle">E0</div>
+      <div class="val" id="e0">—</div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  "use strict";
+
+  // DOM
+  const canvTrail = document.getElementById('trail');
+  const ctxTrail = canvTrail.getContext('2d');
+  const canvPend = document.getElementById('pendulum');
+  const ctxPend = canvPend.getContext('2d');
+  const btnPlay = document.getElementById('btnPlay');
+  const btnReset = document.getElementById('btnReset');
+  const btnRandom = document.getElementById('btnRandom');
+  const btnClear = document.getElementById('btnClear');
+  const btnStep = document.getElementById('btnStep');
+  const btnSave = document.getElementById('btnSave');
+
+  const slider = id => document.getElementById(id);
+  const text = id => document.getElementById(id);
+  const s_l1 = slider('l1'), s_l2 = slider('l2');
+  const s_m1 = slider('m1'), s_m2 = slider('m2');
+  const s_g = slider('g'), s_damp = slider('damp'), s_fade = slider('fade');
+  const s_spf = slider('spf'), sel_mode = document.getElementById('mode');
+  const chk_autoscale = document.getElementById('autoscale');
+  const chk_lockE = document.getElementById('lockE');
+  const v_l1 = text('l1v'), v_l2 = text('l2v');
+  const v_m1 = text('m1v'), v_m2 = text('m2v');
+  const v_g = text('gv'), v_damp = text('dampv'), v_fade = text('fadev');
+  const v_spf = text('spfv');
+  const eNow = text('eNow'), e0 = text('e0'), eBar = document.getElementById('eBar');
+
+  // Canvas sizing
+  let DPR = 1, W = 0, H = 0;
+  function resize() {
+    const pr = window.devicePixelRatio || 1;
+    DPR = pr;
+    const rect = canvPend.getBoundingClientRect();
+    W = Math.floor(rect.width * pr);
+    H = Math.floor(rect.height * pr);
+    [canvPend, canvTrail].forEach(cv => {
+      cv.width = W; cv.height = H;
+      cv.style.width = rect.width + 'px';
+      cv.style.height = rect.height + 'px';
+      const c = cv.getContext('2d');
+      c.setTransform(pr, 0, 0, pr, 0, 0); // logical CSS pixels
+      c.lineCap = 'round';
+      c.lineJoin = 'round';
+    });
+    pivot.x = rect.width * 0.5;
+    pivot.y = Math.max(60, Math.min(rect.height * 0.18, rect.height*0.28));
+    // Redraw pendulum immediately
+    drawPendulum();
+  }
+  window.addEventListener('resize', resize, {passive: true});
+
+  // Simulation state
+  const state = {
+    m1: 10, m2: 10,
+    l1: 170, l2: 170, // in CSS px
+    g: 700, damping: 0.02, // 1/s
+    theta1: Math.PI * 0.85, theta2: Math.PI * 1.1, // from vertical downward
+    omega1: 0, omega2: 0,
+    dt: 1/120, stepsPerFrame: 2,
+    running: false,
+    fadeHalfLife: 3.5, // seconds, 0 = infinite persistence
+    colorMode: 'total', // 'total'|'kin'|'pot'|'speed'
+    autoscale: true,
+    lockEnergy: false,
+  };
+  const pivot = {x: 0, y: 0};
+
+  // Energy scaling
+  let E0_val = 0;
+  let range = {min: 0, max: 0}; // scaling range for color mapping
+  function setEnergyBaseline() {
+    const {T,V,E} = energy(state);
+    E0_val = E;
+    e0.textContent = fmt(E0_val);
+    // initialize ranges
+    range = {
+      min: state.colorMode === 'kin' ? 0 : E0_val*0.9,
+      max: state.colorMode === 'kin' ? Math.max(1, T*1.2) : E0_val*1.1
+    };
+  }
+
+  // Helpers
+  const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+  function fmt(x) {
+    if (!isFinite(x)) return '—';
+    const ax = Math.abs(x);
+    if (ax >= 1e4 || (ax && ax < 1e-1)) return x.toExponential(2);
+    return x.toFixed(2);
+  }
+
+  // UI initialize
+  function initUI() {
+    s_l1.value = state.l1; s_l2.value = state.l2;
+    s_m1.value = state.m1; s_m2.value = state.m2;
+    s_g.value = state.g; s_damp.value = state.damping;
+    s_fade.value = state.fadeHalfLife;
+    s_spf.value = state.stepsPerFrame;
+    sel_mode.value = state.colorMode;
+    chk_autoscale.checked = state.autoscale;
+    chk_lockE.checked = state.lockEnergy;
+    syncLabels();
+
+    s_l1.addEventListener('input', () => { state.l1 = +s_l1.value; syncLabels(); });
+    s_l2.addEventListener('input', () => { state.l2 = +s_l2.value; syncLabels(); });
+    s_m1.addEventListener('input', () => { state.m1 = +s_m1.value; syncLabels(); });
+    s_m2.addEventListener('input', () => { state.m2 = +s_m2.value; syncLabels(); });
+    s_g.addEventListener('input', () => { state.g = +s_g.value; syncLabels(); });
+    s_damp.addEventListener('input', () => { state.damping = +s_damp.value; syncLabels(); });
+    s_fade.addEventListener('input', () => { state.fadeHalfLife = +s_fade.value; syncLabels(); });
+    s_spf.addEventListener('input', () => { state.stepsPerFrame = +s_spf.value; syncLabels(); });
+    sel_mode.addEventListener('change', () => {
+      state.colorMode = sel_mode.value;
+      // reset scaling for color mapping
+      setEnergyBaseline();
+    });
+    chk_autoscale.addEventListener('change', () => { state.autoscale = chk_autoscale.checked; });
+    chk_lockE.addEventListener('change', () => { state.lockEnergy = chk_lockE.checked; });
+
+    btnPlay.addEventListener('click', toggleRun);
+    btnReset.addEventListener('click', () => reset(true));
+    btnRandom.addEventListener('click', randomize);
+    btnClear.addEventListener('click', clearTrails);
+    btnStep.addEventListener('click', stepOnce);
+    btnSave.addEventListener('click', saveImage);
+
+    window.addEventListener('keydown', ev => {
+      if (ev.target && ['INPUT', 'SELECT', 'TEXTAREA'].includes(ev.target.tagName)) return;
+      if (ev.code === 'Space') { ev.preventDefault(); toggleRun(); }
+      else if (ev.key === 'r' || ev.key === 'R') { reset(true); }
+      else if (ev.key === '.') { stepOnce(); }
+      else if (ev.key === 'c' || ev.key === 'C') { clearTrails(); }
+    }, {passive: false});
+
+    // Clicking anywhere toggles play if not on a control
+    canvPend.addEventListener('click', () => {
+      // quick play/pause from canvas
+      toggleRun();
+    });
+  }
+  function syncLabels() {
+    v_l1.textContent = state.l1|0;
+    v_l2.textContent = state.l2|0;
+    v_m1.textContent = state.m1|0;
+    v_m2.textContent = state.m2|0;
+    v_g.textContent = state.g|0;
+    v_damp.textContent = (+state.damping).toFixed(2);
+    v_fade.textContent = state.fadeHalfLife === 0 ? '∞' : state.fadeHalfLife.toFixed(2);
+    v_spf.textContent = state.stepsPerFrame|0;
+  }
+
+  // Physics
+  function deriv(s) {
+    const {m1, m2, l1, l2, g, damping} = state;
+    const t1 = s.theta1, t2 = s.theta2, w1 = s.omega1, w2 = s.omega2;
+    const sin = Math.sin, cos = Math.cos;
+
+    const d = 2*m1 + m2 - m2 * Math.cos(2*t1 - 2*t2);
+    const eps = 1e-9;
+    const denom1 = (l1 * (d || eps));
+    const denom2 = (l2 * (d || eps));
+
+    const delta = t1 - t2;
+    const s12 = sin(delta), c12 = cos(delta);
+
+    const num1 = -g*(2*m1 + m2)*sin(t1) - m2*g*sin(t1 - 2*t2) - 2*s12*m2*(w2*w2*l2 + w1*w1*l1*c12);
+    const a1 = num1 / denom1 - damping * w1;
+
+    const num2 = 2*s12*(w1*w1*l1*(m1+m2) + g*(m1+m2)*cos(t1) + w2*w2*l2*m2*c12);
+    const a2 = num2 / denom2 - damping * w2;
+
+    return { dtheta1: w1, domega1: a1, dtheta2: w2, domega2: a2 };
+  }
+  function rk4Step(dt) {
+    const s = state;
+    const k1 = deriv(s);
+
+    const s2 = {
+      theta1: s.theta1 + 0.5*dt*k1.dtheta1,
+      omega1: s.omega1 + 0.5*dt*k1.domega1,
+      theta2: s.theta2 + 0.5*dt*k1.dtheta2,
+      omega2: s.omega2 + 0.5*dt*k1.domega2,
+    };
+    const k2 = deriv(s2);
+
+    const s3 = {
+      theta1: s.theta1 + 0.5*dt*k2.dtheta1,
+      omega1: s.omega1 + 0.5*dt*k2.domega1,
+      theta2: s.theta2 + 0.5*dt*k2.dtheta2,
+      omega2: s.omega2 + 0.5*dt*k2.domega2,
+    };
+    const k3 = deriv(s3);
+
+    const s4 = {
+      theta1: s.theta1 + dt*k3.dtheta1,
+      omega1: s.omega1 + dt*k3.domega1,
+      theta2: s.theta2 + dt*k3.dtheta2,
+      omega2: s.omega2 + dt*k3.domega2,
+    };
+    const k4 = deriv(s4);
+
+    s.theta1 += dt * (k1.dtheta1 + 2*k2.dtheta1 + 2*k3.dtheta1 + k4.dtheta1) / 6;
+    s.omega1 += dt * (k1.domega1 + 2*k2.domega1 + 2*k3.domega1 + k4.domega1) / 6;
+    s.theta2 += dt * (k1.dtheta2 + 2*k2.dtheta2 + 2*k3.dtheta2 + k4.dtheta2) / 6;
+    s.omega2 += dt * (k1.domega2 + 2*k2.domega2 + 2*k3.domega2 + k4.domega2) / 6;
+  }
+  function energy(s) {
+    const {m1, m2, l1, l2, g} = state;
+    const t1 = s.theta1, t2 = s.theta2, w1 = s.omega1, w2 = s.omega2;
+    const cos = Math.cos;
+    const v1sq = l1*l1*w1*w1;
+    const v2sq = v1sq + l2*l2*w2*w2 + 2*l1*l2*w1*w2*Math.cos(t1 - t2);
+    const T = 0.5*m1*v1sq + 0.5*m2*v2sq;
+    const V = -g * ((m1 + m2)*l1*cos(t1) + m2*l2*cos(t2));
+    const E = T + V;
+    return {T,V,E, v2: Math.sqrt(Math.max(0, v2sq))};
+  }
+  function posFromAngles(s) {
+    const x1 = pivot.x + state.l1 * Math.sin(s.theta1);
+    const y1 = pivot.y + state.l1 * Math.cos(s.theta1);
+    const x2 = x1 + state.l2 * Math.sin(s.theta2);
+    const y2 = y1 + state.l2 * Math.cos(s.theta2);
+    return {x1,y1,x2,y2};
+  }
+
+  // Energy lock (optional): rescale omegas to keep total E ~ E0
+  function applyEnergyLock() {
+    if (!state.lockEnergy) return;
+    const {T,V,E} = energy(state);
+    const target = E0_val;
+    const neededKin = target - V;
+    if (neededKin <= 0 || T <= 1e-12) return;
+    const s = Math.sqrt(neededKin / T);
+    // Limit scaling to avoid explosions:
+    if (isFinite(s) && s > 0) {
+      const sClamped = clamp(s, 0.5, 2.0);
+      state.omega1 *= sClamped;
+      state.omega2 *= sClamped;
+    }
+  }
+
+  // Drawing
+  function clearTrails() {
+    ctxTrail.setTransform(DPR,0,0,DPR,0,0);
+    ctxTrail.clearRect(0, 0, canvTrail.width/DPR, canvTrail.height/DPR);
+    // reset color scaling to baseline so colors remain nice after clear
+    setEnergyBaseline();
+  }
+  function fadeTrails(dt) {
+    const halfLife = state.fadeHalfLife;
+    if (halfLife <= 0) return; // persistent
+    const alpha = 1 - Math.exp(-dt * Math.LN2 / halfLife); // per-frame erase fraction
+    if (alpha <= 0) return;
+    const w = canvTrail.width/DPR, h = canvTrail.height/DPR;
+    ctxTrail.save();
+    ctxTrail.globalCompositeOperation = 'destination-out';
+    ctxTrail.fillStyle = `rgba(0,0,0,${alpha.toFixed(6)})`;
+    ctxTrail.fillRect(0,0,w,h);
+    ctxTrail.restore();
+  }
+  function colorFor(value) {
+    // value normalized in [range.min, range.max]
+    // clamp then blue->cyan->green->yellow->red via HSL
+    let v = 0.5;
+    const lo = range.min, hi = range.max;
+    if (hi > lo) v = clamp((value - lo) / (hi - lo), 0, 1); else v = 0.5;
+    const hue = (1 - v) * 240; // 240=blue .. 0=red
+    const sat = 100, light = 54;
+    return `hsl(${hue.toFixed(1)} ${sat}% ${light}%)`;
+  }
+  function metricCurrent() {
+    const {T,V,E, v2} = energy(state);
+    switch (state.colorMode) {
+      case 'kin': return {val: T, label: 'T'};
+      case 'pot': return {val: V, label: 'V'};
+      case 'speed': return {val: v2, label: '|v₂|'};
+      default: return {val: E, label: 'E'};
+    }
+  }
+  function updateRangeWith(val) {
+    if (!state.autoscale) return;
+    // widen range gently to include new values
+    if (val < range.min) range.min = val;
+    if (val > range.max) range.max = val;
+  }
+  function drawTrailSegment(pOld, pNow, color) {
+    ctxTrail.save();
+    ctxTrail.strokeStyle = color;
+    ctxTrail.lineWidth = 2.0;
+    ctxTrail.beginPath();
+    ctxTrail.moveTo(pOld.x2, pOld.y2);
+    ctxTrail.lineTo(pNow.x2, pNow.y2);
+    ctxTrail.stroke();
+    ctxTrail.restore();
+  }
+  function drawPendulum() {
+    const {x1,y1,x2,y2} = posFromAngles(state);
+    const r1 = Math.max(4, 4 + (state.m1-1)*0.12);
+    const r2 = Math.max(4, 4 + (state.m2-1)*0.12);
+
+    // Clear
+    const w = canvPend.width/DPR, h = canvPend.height/DPR;
+    ctxPend.clearRect(0,0,w,h);
+
+    // Arms
+    ctxPend.save();
+    ctxPend.strokeStyle = '#9bb4ff1a';
+    ctxPend.lineWidth = 10;
+    ctxPend.beginPath();
+    ctxPend.moveTo(pivot.x, pivot.y);
+    ctxPend.lineTo(x1, y1);
+    ctxPend.stroke();
+
+    ctxPend.beginPath();
+    ctxPend.moveTo(x1, y1);
+    ctxPend.lineTo(x2, y2);
+    ctxPend.stroke();
+
+    // Tips
+    ctxPend.lineWidth = 2.2;
+    ctxPend.strokeStyle = '#aac0ff';
+    ctxPend.beginPath(); ctxPend.moveTo(pivot.x, pivot.y); ctxPend.lineTo(x1, y1); ctxPend.stroke();
+    ctxPend.beginPath(); ctxPend.moveTo(x1, y1); ctxPend.lineTo(x2, y2); ctxPend.stroke();
+
+    // Bobs
+    ctxPend.fillStyle = '#2be4ff';
+    ctxPend.beginPath(); ctxPend.arc(x1, y1, r1, 0, Math.PI*2); ctxPend.fill();
+    ctxPend.strokeStyle = '#072642'; ctxPend.stroke();
+
+    ctxPend.fillStyle = '#ff7a59';
+    ctxPend.beginPath(); ctxPend.arc(x2, y2, r2, 0, Math.PI*2); ctxPend.fill();
+    ctxPend.stroke();
+
+    // Pivot
+    ctxPend.fillStyle = '#e2ecff';
+    ctxPend.beginPath(); ctxPend.arc(pivot.x, pivot.y, 3, 0, Math.PI*2); ctxPend.fill();
+    ctxPend.restore();
+
+    // HUD
+    const {E} = energy(state);
+    eNow.textContent = fmt(E) + ' / ' + fmt(E0_val);
+    // progress within [min,max] relative to baseline range for HUD bar:
+    const lo = range.min, hi = range.max;
+    let frac = 0.5;
+    if (hi > lo) frac = clamp((E - lo) / (hi - lo), 0, 1);
+    eBar.style.width = (frac * 100).toFixed(1) + '%';
+  }
+
+  // Control
+  function toggleRun() {
+    state.running = !state.running;
+    btnPlay.textContent = state.running ? '⏸ Pause' : '⏵ Play';
+    btnPlay.setAttribute('data-pressed', state.running ? 'true' : 'false');
+    if (state.running) requestFrame();
+  }
+  function reset(clear = true) {
+    state.theta1 = Math.PI * 0.85;
+    state.theta2 = Math.PI * 1.1;
+    state.omega1 = 0; state.omega2 = 0;
+    setEnergyBaseline();
+    if (clear) clearTrails();
+    drawPendulum();
+  }
+  function randomize() {
+    // random initial angles, small initial kick
+    state.theta1 = Math.random() * Math.PI * 2;
+    state.theta2 = Math.random() * Math.PI * 2;
+    state.omega1 = (Math.random() - 0.5) * 0.5;
+    state.omega2 = (Math.random() - 0.5) * 0.5;
+    setEnergyBaseline();
+    drawPendulum();
+  }
+  function stepOnce() {
+    const prev = posFromAngles(state);
+    // one visual frame worth of steps
+    const steps = Math.max(1, state.stepsPerFrame|0);
+    const dt = state.dt;
+    for (let i=0;i<steps;i++) {
+      rk4Step(dt);
+      applyEnergyLock();
+      // Trail drawing for each substep
+      const now = posFromAngles(state);
+      const {T,V,E, v2} = energy(state);
+      const metric = state.colorMode === 'kin' ? T : state.colorMode === 'pot' ? V : state.colorMode === 'speed' ? v2 : E;
+      updateRangeWith(metric);
+      const color = colorFor(metric);
+      drawTrailSegment(prev, now, color);
+      prev.x2 = now.x2; prev.y2 = now.y2; // continue segment chain inside the frame
+    }
+    drawPendulum();
+  }
+
+  // Animation loop
+  let rafId = 0, lastT = performance.now();
+  function requestFrame() { if (!rafId) rafId = requestAnimationFrame(tick); }
+  function tick(now) {
+    rafId = 0;
+    const dtFrame = Math.max(0, (now - lastT) / 1000);
+    lastT = now;
+
+    // Fade trails by real time elapsed
+    fadeTrails(dtFrame);
+
+    // Advance physics and draw multiple sub-steps per frame
+    stepOnce();
+
+    if (state.running) requestFrame();
+  }
+
+  // Save image (merge both canvases)
+  function saveImage(ev) {
+    const w = canvPend.width, h = canvPend.height;
+    const tmp = document.createElement('canvas');
+    tmp.width = w; tmp.height = h;
+    const ct = tmp.getContext('2d');
+    // solid bg
+    ct.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg') || '#0b0f15';
+    ct.fillRect(0,0,w,h);
+    // draw trails and pendulum (account for DPR since these are already device pixels)
+    ct.drawImage(canvTrail, 0, 0);
+    ct.drawImage(canvPend, 0, 0);
+    const url = tmp.toDataURL('image/png');
+    btnSave.href = url;
+    // optional: auto download if clicked anchor
+    // no-op otherwise
+  }
+
+  // Boot
+  initUI();
+  resize();
+  setEnergyBaseline();
+  clearTrails();
+  drawPendulum();
+
+})();
+</script>
+</body>
+</html>
