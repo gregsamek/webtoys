@@ -1,0 +1,1061 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
+<title>Cellular Automata Playground (Single-File, No Dependencies)</title>
+<style>
+  :root{
+    --bg:#0e0f13;
+    --panel:#171924;
+    --accent:#4da3ff;
+    --muted:#9aa3b2;
+    --text:#e6e8ee;
+    --danger:#ff5d6c;
+    --ok:#2ecc71;
+    --warn:#f1c40f;
+    --grid:#262b38;
+    --btn:#23283a;
+    --btnHover:#2b3250;
+    --btnActive:#1e2235;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,"Helvetica Neue",Arial,"Noto Sans","Apple Color Emoji","Segoe UI Emoji",sans-serif;
+    -webkit-font-smoothing:antialiased;
+    -moz-osx-font-smoothing:grayscale;
+  }
+  #app{
+    display:flex;
+    flex-direction:column;
+    height:100%;
+  }
+  header{
+    padding:10px 14px;
+    background:linear-gradient(180deg, #141722, #111420);
+    border-bottom:1px solid #1c2132;
+    display:flex;
+    align-items:center;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  header h1{
+    margin:0;
+    font-size:16px;
+    font-weight:600;
+    letter-spacing:0.3px;
+  }
+  .badge{
+    font-size:11px;
+    color:#bed7ff;
+    background:#1a2742;
+    border:1px solid #28406b;
+    padding:2px 8px;
+    border-radius:999px;
+  }
+  .controls{
+    background:var(--panel);
+    border-bottom:1px solid #1c2132;
+    padding:8px;
+  }
+  .row{
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px 12px;
+    align-items:center;
+    margin:6px 0;
+  }
+  .spacer{flex:1}
+  label{
+    color:var(--muted);
+    font-size:12px;
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+  }
+  input[type="number"], input[type="text"], select{
+    background:#0f1320;
+    border:1px solid #22283b;
+    color:var(--text);
+    border-radius:6px;
+    padding:6px 8px;
+    font-size:13px;
+    outline:none;
+  }
+  input[type="number"]{ width:72px }
+  input[type="text"]{ width:120px }
+  select{ height:30px }
+  input[type="range"]{
+    accent-color:var(--accent);
+    height:22px;
+  }
+  .btn{
+    appearance:none;
+    background:var(--btn);
+    color:var(--text);
+    border:1px solid #2b3249;
+    border-radius:8px;
+    padding:7px 10px;
+    font-size:13px;
+    cursor:pointer;
+    transition:background 0.12s ease, transform 0.02s ease;
+  }
+  .btn:hover{ background:var(--btnHover) }
+  .btn:active{ background:var(--btnActive); transform:translateY(1px) }
+  .btn.primary{ background:#1f2e5a; border-color:#2a3a75; color:#dfe9ff }
+  .btn.danger{ background:#3b1c22; border-color:#632730; color:#ffd6db }
+  .btn.ok{ background:#1a3326; border-color:#274b39; color:#d5ffe6 }
+  .btn.small{ padding:5px 8px; font-size:12px; border-radius:7px }
+  #canvasWrap{
+    position:relative;
+    flex:1;
+    overflow:auto;
+    background:#0a0c12;
+  }
+  canvas{
+    image-rendering: pixelated;
+    display:block;
+    background:#000;
+    margin:0;
+  }
+  .palette{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    padding:2px 6px;
+    background:#0f1320;
+    border:1px solid #22283b;
+    border-radius:8px;
+  }
+  .swatch{
+    width:22px;height:22px;border-radius:4px;cursor:pointer; border:2px solid transparent;
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,0.08);
+  }
+  .swatch.selected{ border-color:#fff; box-shadow:0 0 0 1px rgba(255,255,255,0.25) }
+  .hint{ color:#8ea0bf; font-size:12px }
+  footer{
+    border-top:1px solid #1c2132;
+    background:#101423;
+    color:#9fb0d0;
+    font-size:12px;
+    padding:8px 12px;
+  }
+  .kbd{
+    background:#0c1222;
+    border:1px solid #202b45;
+    border-radius:4px;
+    padding:0 4px;
+    font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    color:#d6e3ff;
+  }
+  .sep{ opacity:0.4; margin:0 4px }
+  .flex{ display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+  .panel{
+    background:#0f1320;
+    border:1px solid #22283b;
+    padding:6px 8px;
+    border-radius:8px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Cellular Automata Playground</h1>
+    <span class="badge">single-file • no dependencies</span>
+    <div class="spacer"></div>
+    <div class="hint">Click to draw. Right-click to erase. Space = Play/Pause.</div>
+  </header>
+
+  <div class="controls">
+    <div class="row">
+      <button class="btn primary" id="btnPlay">Play</button>
+      <button class="btn" id="btnStep" title="Step (.)">Step</button>
+      <label>Speed
+        <input type="range" id="speed" min="1" max="60" value="20">
+        <span id="speedVal">20</span> fps
+      </label>
+      <label>Cell size
+        <input type="range" id="cellSize" min="2" max="24" value="8">
+        <span id="cellSizeVal">8</span>
+      </label>
+      <label><input type="checkbox" id="showGrid" checked> Grid</label>
+      <label><input type="checkbox" id="wrap" checked> Wrap edges</label>
+      <div class="spacer"></div>
+      <div class="panel flex">
+        <div id="palette" class="palette"></div>
+        <label>Stamp
+          <select id="stamp"></select>
+        </label>
+        <button class="btn small" id="stampRotate" title="Rotate stamp (R)">⟳</button>
+        <button class="btn small" id="stampMirror" title="Mirror stamp (M)">⇋</button>
+      </div>
+    </div>
+    <div class="row">
+      <label>Automaton
+        <select id="ruleFamily">
+          <option value="life">Life-like (B/S)</option>
+          <option value="brian">Brian's Brain</option>
+          <option value="wire">Wireworld</option>
+        </select>
+      </label>
+      <span id="lifeControls" class="flex">
+        <label>Rule <input type="text" id="lifeRule" value="B3/S23" spellcheck="false"></label>
+        <label>Preset
+          <select id="lifePreset">
+            <option value="B3/S23">Game of Life (B3/S23)</option>
+            <option value="B36/S23">HighLife (B36/S23)</option>
+            <option value="B2/S">Seeds (B2/S)</option>
+            <option value="B3/S012345678">Life w/o Death (B3/S012345678)</option>
+            <option value="B34/S34">34 Life (B34/S34)</option>
+            <option value="B35678/S5678">Diamoeba (B35678/S5678)</option>
+          </select>
+        </label>
+      </span>
+      <span id="brianControls" class="flex" style="display:none">
+        <span class="hint">Firing → Dying → Off; Off with 2 firing neighbors → Firing</span>
+      </span>
+      <span id="wireControls" class="flex" style="display:none">
+        <span class="hint">Empty, Head, Tail, Conductor</span>
+      </span>
+      <div class="spacer"></div>
+      <label>Size
+        W <input type="number" id="width" min="16" max="800" value="140">
+        H <input type="number" id="height" min="16" max="600" value="100">
+      </label>
+      <button class="btn" id="btnResize">Resize</button>
+      <button class="btn ok" id="btnRandom">Random</button>
+      <label>ρ <input type="range" id="randDensity" min="0" max="1" step="0.01" value="0.20"><span id="randVal">0.20</span></label>
+      <button class="btn danger" id="btnClear">Clear</button>
+      <div class="spacer"></div>
+      <button class="btn" id="btnExport" title="Download pattern JSON">Save</button>
+      <input type="file" id="fileImport" accept=".json" style="display:none" />
+      <button class="btn" id="btnImport" title="Load pattern JSON">Open</button>
+    </div>
+  </div>
+
+  <div id="canvasWrap">
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <footer>
+    Controls: <span class="kbd">Space</span> Play/Pause <span class="sep">•</span>
+    <span class="kbd">.</span> Step <span class="sep">•</span>
+    <span class="kbd">R</span> Random <span class="sep">•</span>
+    <span class="kbd">C</span> Clear <span class="sep">•</span>
+    <span class="kbd">G</span> Grid <span class="sep">•</span>
+    <span class="kbd">W</span> Wrap <span class="sep">•</span>
+    <span class="kbd">1..4</span> pick brush <span class="sep">•</span>
+    When a stamp is selected: <span class="kbd">R</span> rotate, <span class="kbd">M</span> mirror.
+    <span id="status" style="float:right">Gen: 0 • Alive: 0</span>
+  </footer>
+</div>
+
+<script>
+(() => {
+  // Utilities
+  const clamp = (v,min,max)=>v<min?min:v>max?max:v;
+  const hexToRgb = (hex) => {
+    hex = hex.replace('#','');
+    if (hex.length===3) hex = hex.split('').map(c=>c+c).join('');
+    const num = parseInt(hex, 16);
+    return [(num>>16)&255, (num>>8)&255, num&255];
+  };
+  const deepCopy2D = (a)=>a.map(row=>row.slice());
+
+  // Canvas and rendering
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const off = document.createElement('canvas');
+  const offCtx = off.getContext('2d', { willReadFrequently: true });
+
+  // UI elements
+  const btnPlay = document.getElementById('btnPlay');
+  const btnStep = document.getElementById('btnStep');
+  const speed = document.getElementById('speed');
+  const speedVal = document.getElementById('speedVal');
+  const cellSizeEl = document.getElementById('cellSize');
+  const cellSizeVal = document.getElementById('cellSizeVal');
+  const showGrid = document.getElementById('showGrid');
+  const wrapEl = document.getElementById('wrap');
+  const ruleFamily = document.getElementById('ruleFamily');
+  const lifeControls = document.getElementById('lifeControls');
+  const lifeRule = document.getElementById('lifeRule');
+  const lifePreset = document.getElementById('lifePreset');
+  const brianControls = document.getElementById('brianControls');
+  const wireControls = document.getElementById('wireControls');
+  const widthEl = document.getElementById('width');
+  const heightEl = document.getElementById('height');
+  const btnResize = document.getElementById('btnResize');
+  const btnRandom = document.getElementById('btnRandom');
+  const randDensity = document.getElementById('randDensity');
+  const randVal = document.getElementById('randVal');
+  const btnClear = document.getElementById('btnClear');
+  const statusEl = document.getElementById('status');
+  const paletteWrap = document.getElementById('palette');
+  const stampSel = document.getElementById('stamp');
+  const stampRotateBtn = document.getElementById('stampRotate');
+  const stampMirrorBtn = document.getElementById('stampMirror');
+  const btnExport = document.getElementById('btnExport');
+  const btnImport = document.getElementById('btnImport');
+  const fileImport = document.getElementById('fileImport');
+  const canvasWrap = document.getElementById('canvasWrap');
+
+  // State
+  let W = parseInt(widthEl.value,10);
+  let H = parseInt(heightEl.value,10);
+  let wrap = wrapEl.checked;
+  let cellSize = parseInt(cellSizeEl.value, 10);
+  let running = false;
+  let generation = 0;
+  let fps = parseInt(speed.value,10);
+  let lastTime = 0;
+  let accumulator = 0;
+  const MAX_STEPS_PER_FRAME = 5;
+  let brush = 1; // currently selected state to paint
+  let statesCount = 2;
+  let palette = []; // [[r,g,b],...]
+  let grid = new Uint8Array(W*H);
+  let next = new Uint8Array(W*H);
+
+  // Offscreen buffer for per-cell render (1 pixel per cell, scaled up on main canvas)
+  function resetOffscreen() {
+    off.width = W;
+    off.height = H;
+  }
+
+  function setCanvasCSSSize() {
+    const cssW = W * cellSize;
+    const cssH = H * cellSize;
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    // Backing buffer: scale by devicePixelRatio for crisp grid overlay
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.imageSmoothingEnabled = false;
+  }
+
+  // Rule engines
+  const engines = {
+    life: {
+      name: 'Life-like',
+      states: 2,
+      parse(ruleStr){
+        // Parse "Bxxx/Syyy"
+        const clean = ruleStr.toUpperCase().replace(/\s+/g,'');
+        const m = clean.match(/^B(\d*)\/S(\d*)$/);
+        if(!m) throw new Error('Invalid Life-like rule. Use format B3/S23, etc.');
+        const births = new Array(9).fill(false);
+        const survives = new Array(9).fill(false);
+        m[1].split('').forEach(ch=>{ const n=+ch; if(n>=0&&n<=8) births[n]=true; });
+        m[2].split('').forEach(ch=>{ const n=+ch; if(n>=0&&n<=8) survives[n]=true; });
+        return {births, survives};
+      },
+      step(rule, src, dst, W, H, wrap){
+        let aliveCount = 0;
+        if (wrap) {
+          for (let y=0; y<H; y++){
+            const yu = (y-1+H)%H, yd = (y+1)%H;
+            const yb = y*W, yub = yu*W, ydb = yd*W;
+            for (let x=0; x<W; x++){
+              const xm = (x-1+W)%W, xp = (x+1)%W;
+              const sum =
+                src[yub + xm] + src[yub + x] + src[yub + xp] +
+                src[yb + xm]              +   src[yb + xp] +
+                src[ydb + xm] + src[ydb + x] + src[ydb + xp];
+              const alive = src[yb+x] === 1;
+              const out = alive ? (rule.survives[sum]?1:0) : (rule.births[sum]?1:0);
+              dst[yb+x] = out;
+              aliveCount += out;
+            }
+          }
+        } else {
+          for (let y=0; y<H; y++){
+            const yub = (y-1)*W, yb = y*W, ydb = (y+1)*W;
+            for (let x=0; x<W; x++){
+              let sum = 0;
+              // Row above
+              if (y>0) {
+                if (x>0) sum += src[yub + (x-1)];
+                sum += src[yub + x];
+                if (x<W-1) sum += src[yub + (x+1)];
+              }
+              // Same row neighbors
+              if (x>0) sum += src[yb + (x-1)];
+              if (x<W-1) sum += src[yb + (x+1)];
+              // Row below
+              if (y<H-1) {
+                if (x>0) sum += src[ydb + (x-1)];
+                sum += src[ydb + x];
+                if (x<W-1) sum += src[ydb + (x+1)];
+              }
+              const alive = src[yb+x] === 1;
+              const out = alive ? (rule.survives[sum]?1:0) : (rule.births[sum]?1:0);
+              dst[yb+x] = out;
+              aliveCount += out;
+            }
+          }
+        }
+        return aliveCount;
+      },
+      defaultPalette: ['#0a0a0a', '#39d353'], // dead, alive
+    },
+    brian: {
+      name: "Brian's Brain",
+      states: 3, // 0 Off, 1 Firing, 2 Dying
+      parse(){ return {}; },
+      step(rule, src, dst, W, H, wrap){
+        let active = 0;
+        if (wrap) {
+          for (let y=0; y<H; y++){
+            const yu=(y-1+H)%H, yd=(y+1)%H;
+            const yb=y*W, yub=yu*W, ydb=yd*W;
+            for (let x=0; x<W; x++){
+              const xm=(x-1+W)%W, xp=(x+1)%W;
+              const s = src[yb+x];
+              let n =
+                (src[yub+xm]===1) + (src[yub+x]===1) + (src[yub+xp]===1) +
+                (src[yb+xm]===1)                 +     (src[yb+xp]===1) +
+                (src[ydb+xm]===1) + (src[ydb+x]===1) + (src[ydb+xp]===1);
+              let out = 0;
+              if (s===0) out = (n===2)?1:0; // off -> firing if exactly 2 firing neighbors
+              else if (s===1) out = 2;      // firing -> dying
+              else out = 0;                 // dying -> off
+              dst[yb+x] = out;
+              if (out!==0) active++;
+            }
+          }
+        } else {
+          for (let y=0; y<H; y++){
+            const yub=(y-1)*W, yb=y*W, ydb=(y+1)*W;
+            for (let x=0; x<W; x++){
+              const s = src[yb+x];
+              let n = 0;
+              if (y>0){
+                if (x>0 && src[yub+x-1]===1) n++;
+                if (src[yub+x]===1) n++;
+                if (x<W-1 && src[yub+x+1]===1) n++;
+              }
+              if (x>0 && src[yb+x-1]===1) n++;
+              if (x<W-1 && src[yb+x+1]===1) n++;
+              if (y<H-1){
+                if (x>0 && src[ydb+x-1]===1) n++;
+                if (src[ydb+x]===1) n++;
+                if (x<W-1 && src[ydb+x+1]===1) n++;
+              }
+              let out = 0;
+              if (s===0) out = (n===2)?1:0;
+              else if (s===1) out = 2;
+              else out = 0;
+              dst[yb+x] = out;
+              if (out!==0) active++;
+            }
+          }
+        }
+        return active;
+      },
+      defaultPalette: ['#000000', '#27e1ff', '#1f5dff'],
+    },
+    wire: {
+      name: "Wireworld",
+      states: 4, // 0 Empty, 1 Head, 2 Tail, 3 Conductor
+      parse(){ return {}; },
+      step(rule, src, dst, W, H, wrap){
+        let nonEmpty = 0;
+        if (wrap) {
+          for (let y=0; y<H; y++){
+            const yu=(y-1+H)%H, yd=(y+1)%H;
+            const yb=y*W, yub=yu*W, ydb=yd*W;
+            for (let x=0; x<W; x++){
+              const xm=(x-1+W)%W, xp=(x+1)%W;
+              const s = src[yb+x];
+              let out = 0;
+              if (s===0) out = 0;          // empty stays empty
+              else if (s===1) out = 2;     // head -> tail
+              else if (s===2) out = 3;     // tail -> conductor
+              else {
+                // conductor -> head if 1 or 2 head neighbors, else stays conductor
+                const heads =
+                  (src[yub+xm]===1) + (src[yub+x]===1) + (src[yub+xp]===1) +
+                  (src[yb+xm]===1)                 +     (src[yb+xp]===1) +
+                  (src[ydb+xm]===1) + (src[ydb+x]===1) + (src[ydb+xp]===1);
+                out = (heads===1 || heads===2) ? 1 : 3;
+              }
+              dst[yb+x] = out;
+              if (out!==0) nonEmpty++;
+            }
+          }
+        } else {
+          for (let y=0; y<H; y++){
+            const yub=(y-1)*W, yb=y*W, ydb=(y+1)*W;
+            for (let x=0; x<W; x++){
+              const s = src[yb+x];
+              let out = 0;
+              if (s===0) out = 0;
+              else if (s===1) out = 2;
+              else if (s===2) out = 3;
+              else {
+                let heads = 0;
+                if (y>0){
+                  if (x>0 && src[yub+x-1]===1) heads++;
+                  if (src[yub+x]===1) heads++;
+                  if (x<W-1 && src[yub+x+1]===1) heads++;
+                }
+                if (x>0 && src[yb+x-1]===1) heads++;
+                if (x<W-1 && src[yb+x+1]===1) heads++;
+                if (y<H-1){
+                  if (x>0 && src[ydb+x-1]===1) heads++;
+                  if (src[ydb+x]===1) heads++;
+                  if (x<W-1 && src[ydb+x+1]===1) heads++;
+                }
+                out = (heads===1 || heads===2) ? 1 : 3;
+              }
+              dst[yb+x] = out;
+              if (out!==0) nonEmpty++;
+            }
+          }
+        }
+        return nonEmpty;
+      },
+      defaultPalette: ['#000000', '#2aa9ff', '#ff5252', '#f7d038'],
+    }
+  };
+
+  // Current engine
+  let engine = engines.life;
+  let lifeRuleObj = engines.life.parse(lifeRule.value);
+
+  function setEngine(name) {
+    engine = engines[name];
+    statesCount = engine.states;
+    setupPaletteForEngine(name);
+    populateStamps();
+    brush = Math.min(brush, statesCount-1);
+    updatePaletteUI();
+    // For Life, parse rule string
+    if (name==='life') {
+      safeParseLifeRule();
+      lifeControls.style.display = '';
+      brianControls.style.display = 'none';
+      wireControls.style.display = 'none';
+    } else if (name==='brian') {
+      lifeControls.style.display = 'none';
+      brianControls.style.display = '';
+      wireControls.style.display = 'none';
+    } else {
+      lifeControls.style.display = 'none';
+      brianControls.style.display = 'none';
+      wireControls.style.display = '';
+    }
+    render(); // refresh colors
+  }
+
+  function setupPaletteForEngine(name) {
+    const defaults = engines[name].defaultPalette;
+    palette = defaults.map(hexToRgb);
+  }
+
+  function updatePaletteUI() {
+    paletteWrap.innerHTML = '';
+    for (let i=0; i<palette.length; i++){
+      const [r,g,b] = palette[i];
+      const sw = document.createElement('div');
+      sw.className = 'swatch' + (i===brush ? ' selected':'');
+      sw.title = `State ${i}`;
+      sw.style.background = `rgb(${r} ${g} ${b})`;
+      sw.addEventListener('click', () => {
+        brush = i;
+        updatePaletteUI();
+      });
+      paletteWrap.appendChild(sw);
+    }
+  }
+
+  function safeParseLifeRule() {
+    try{
+      lifeRuleObj = engines.life.parse(lifeRule.value);
+      lifeRule.style.borderColor = '#22283b';
+      lifeRule.title = '';
+    }catch(e){
+      lifeRule.style.borderColor = '#ff5d6c';
+      lifeRule.title = e.message;
+    }
+  }
+
+  lifePreset.addEventListener('change', () => {
+    lifeRule.value = lifePreset.value;
+    safeParseLifeRule();
+    render();
+  });
+  lifeRule.addEventListener('change', () => {
+    safeParseLifeRule();
+    render();
+  });
+
+  // Rendering
+  function renderToOffscreen() {
+    const img = offCtx.createImageData(W, H);
+    const data = img.data;
+    const p = palette;
+    let ptr = 0;
+    for (let i=0; i<grid.length; i++){
+      const s = grid[i];
+      const c = p[s] || [0,0,0];
+      data[ptr++] = c[0];
+      data[ptr++] = c[1];
+      data[ptr++] = c[2];
+      data[ptr++] = 255;
+    }
+    offCtx.putImageData(img, 0, 0);
+  }
+
+  function renderGridOverlay() {
+    if (!showGrid.checked || cellSize < 5) return;
+    const w = W*cellSize, h = H*cellSize;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let x=0; x<=W; x++){
+      const px = x*cellSize + 0.5;
+      ctx.moveTo(px, 0);
+      ctx.lineTo(px, h);
+    }
+    for (let y=0; y<=H; y++){
+      const py = y*cellSize + 0.5;
+      ctx.moveTo(0, py);
+      ctx.lineTo(w, py);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function render() {
+    renderToOffscreen();
+    setCanvasCSSSize();
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(off, 0, 0, off.width, off.height, 0, 0, W*cellSize, H*cellSize);
+    renderGridOverlay();
+    updateStatus();
+  }
+
+  // Simulation loop
+  function tick(timestamp) {
+    if (!running) return; // stop loop if paused
+    if (!lastTime) lastTime = timestamp;
+    const dt = timestamp - lastTime;
+    lastTime = timestamp;
+    accumulator += dt;
+    const stepMs = 1000 / fps;
+    let steps = 0;
+    while (accumulator >= stepMs && steps < MAX_STEPS_PER_FRAME) {
+      doStep();
+      accumulator -= stepMs;
+      steps++;
+    }
+    render();
+    requestAnimationFrame(tick);
+  }
+
+  function doStep() {
+    let activeCount = 0;
+    if (engine === engines.life) {
+      activeCount = engine.step(lifeRuleObj, grid, next, W, H, wrap);
+    } else {
+      activeCount = engine.step({}, grid, next, W, H, wrap);
+    }
+    const tmp = grid; grid = next; next = tmp;
+    generation++;
+    lastActiveCount = activeCount;
+  }
+
+  // Grid operations
+  function clearGrid() {
+    grid.fill(0);
+    generation = 0;
+    lastActiveCount = 0;
+    render();
+  }
+  function randomizeGrid(density=0.2) {
+    const maxState = statesCount-1;
+    for (let i=0; i<grid.length; i++){
+      if (engine===engines.life) {
+        grid[i] = Math.random() < density ? 1 : 0;
+      } else if (engine===engines.brian) {
+        // tilt towards off/firing mostly
+        const r = Math.random();
+        grid[i] = (r < density*0.7) ? 1 : (r < density*0.85 ? 2 : 0);
+      } else {
+        // wireworld: mostly conductor with some heads/tails
+        const r = Math.random();
+        if (r < density*0.6) grid[i] = 3;           // conductor backbone
+        else if (r < density*0.7) grid[i] = 1;      // head seeds
+        else if (r < density*0.8) grid[i] = 2;      // tail seeds
+        else grid[i] = 0;
+      }
+    }
+    generation = 0;
+    render();
+  }
+
+  function resizeGrid(newW, newH) {
+    newW = clamp(newW, 16, 800);
+    newH = clamp(newH, 16, 600);
+    const newGrid = new Uint8Array(newW*newH);
+    const minW = Math.min(W, newW);
+    const minH = Math.min(H, newH);
+    for (let y=0; y<minH; y++){
+      newGrid.set(grid.subarray(y*W, y*W + minW), y*newW);
+    }
+    W = newW; H = newH;
+    grid = newGrid;
+    next = new Uint8Array(W*H);
+    resetOffscreen();
+    setCanvasCSSSize();
+    render();
+  }
+
+  // Stamps
+  const stamps = {
+    life: {
+      None: null,
+      Glider: [
+        [0,1,0],
+        [0,0,1],
+        [1,1,1]
+      ],
+      "LWSS": [
+        [0,1,0,0,1],
+        [1,0,0,0,0],
+        [1,0,0,0,1],
+        [1,1,1,1,0]
+      ],
+      "Pulsar": (function(){ // 13x13
+        const P = Array.from({length:13},()=>Array(13).fill(0));
+        const set = (x,y)=>P[y][x]=1;
+        const coords = [
+          [2,0],[3,0],[4,0],[8,0],[9,0],[10,0],
+          [0,2],[5,2],[7,2],[12,2],
+          [0,3],[5,3],[7,3],[12,3],
+          [0,4],[5,4],[7,4],[12,4],
+          [2,5],[3,5],[4,5],[8,5],[9,5],[10,5],
+          [2,7],[3,7],[4,7],[8,7],[9,7],[10,7],
+          [0,8],[5,8],[7,8],[12,8],
+          [0,9],[5,9],[7,9],[12,9],
+          [0,10],[5,10],[7,10],[12,10],
+          [2,12],[3,12],[4,12],[8,12],[9,12],[10,12],
+        ];
+        coords.forEach(([x,y])=>set(x,y));
+        return P;
+      })(),
+      "Gosper Glider Gun": (function(){
+        // 36x9 canonical gun
+        const gun = Array.from({length:9},()=>Array(36).fill(0));
+        const on = (x,y)=>{ gun[y][x]=1; };
+        [
+          [24,0],[22,1],[24,1],[12,2],[13,2],[20,2],[21,2],[34,2],[35,2],
+          [11,3],[15,3],[20,3],[21,3],[34,3],[35,3],
+          [0,4],[1,4],[10,4],[16,4],[20,4],[21,4],
+          [0,5],[1,5],[10,5],[14,5],[16,5],[17,5],[22,5],[24,5],
+          [10,6],[16,6],[24,6],
+          [11,7],[15,7],
+          [12,8],[13,8]
+        ].forEach(([x,y])=>on(x,y));
+        return gun;
+      })()
+    },
+    brian: {
+      None: null,
+      "Random seed": [[1]]
+    },
+    wire: {
+      None: null,
+      "Wire straight (10)": (function(){
+        const w = Array.from({length:1},()=>Array(10).fill(3));
+        return w;
+      })(),
+      "Wire elbow": [
+        [3,3,3],
+        [0,0,3],
+        [0,0,3],
+      ],
+      "Clock": [ // simple oscillator
+        [1,2,3]
+      ]
+    }
+  };
+  let currentStamp = null;
+  let stampRotation = 0; // 0,90,180,270
+  let stampMirror = false;
+
+  function populateStamps() {
+    const dict = stamps[ruleFamily.value];
+    stampSel.innerHTML = '';
+    for (const key in dict) {
+      const opt = document.createElement('option');
+      opt.value = key;
+      opt.textContent = key;
+      stampSel.appendChild(opt);
+    }
+    stampSel.value = 'None';
+    currentStamp = null;
+  }
+  function rotatedStamp(stamp) {
+    if (!stamp) return null;
+    let M = deepCopy2D(stamp);
+    // mirror first if needed (horizontal)
+    if (stampMirror) {
+      M = M.map(row => row.slice().reverse());
+    }
+    // rotate clockwise stampRotation times
+    let times = (stampRotation%4+4)%4;
+    for (let t=0; t<times; t++){
+      const h = M.length, w = M[0].length;
+      const R = Array.from({length:w}, ()=>Array(h).fill(0));
+      for (let y=0; y<h; y++){
+        for (let x=0; x<w; x++){
+          R[x][h-1-y] = M[y][x];
+        }
+      }
+      M = R;
+    }
+    return M;
+  }
+  stampSel.addEventListener('change', ()=>{
+    const name = stampSel.value;
+    currentStamp = stamps[ruleFamily.value][name];
+  });
+  stampRotateBtn.addEventListener('click', ()=>{ stampRotation=(stampRotation+1)%4; render(); });
+  stampMirrorBtn.addEventListener('click', ()=>{ stampMirror=!stampMirror; render(); });
+
+  // Drawing
+  let isDrawing = false;
+  let drawState = brush;
+  let lastCellX = -1, lastCellY = -1;
+  function canvasToCell(clientX, clientY) {
+    const rect = canvas.getBoundingClientRect();
+    const x = Math.floor((clientX - rect.left) / cellSize);
+    const y = Math.floor((clientY - rect.top) / cellSize);
+    return {x, y};
+  }
+  function setCell(x,y,state){
+    if (x<0||x>=W||y<0||y>=H) return;
+    grid[y*W + x] = state;
+  }
+  function placeStampAt(x, y) {
+    const stamp = rotatedStamp(currentStamp);
+    if (!stamp) return;
+    const h = stamp.length, w = stamp[0].length;
+    const x0 = x, y0 = y;
+    for (let j=0; j<h; j++){
+      for (let i=0; i<w; i++){
+        const s = stamp[j][i];
+        if (s === null || s === undefined) continue;
+        const xx = wrap ? (x0+i+W)%W : x0+i;
+        const yy = wrap ? (y0+j+H)%H : y0+j;
+        if (xx<0||xx>=W||yy<0||yy>=H) continue;
+        // For engines with limited states (life: only 0/1) ensure s within range
+        const sv = Math.min(s, statesCount-1);
+        setCell(xx, yy, sv);
+      }
+    }
+  }
+  function pointerDown(e) {
+    e.preventDefault();
+    canvas.setPointerCapture(e.pointerId);
+    const {x,y} = canvasToCell(e.clientX, e.clientY);
+    if (stampSel.value !== 'None' && currentStamp) {
+      placeStampAt(x,y);
+      render();
+      return;
+    }
+    isDrawing = true;
+    drawState = (e.button===2 || e.buttons===2) ? 0 : brush;
+    lastCellX = lastCellY = -1;
+    drawAt(e);
+  }
+  function drawAt(e) {
+    if (!isDrawing) return;
+    const {x,y} = canvasToCell(e.clientX, e.clientY);
+    if (x===lastCellX && y===lastCellY) return;
+    lastCellX = x; lastCellY = y;
+    setCell(x,y,drawState);
+    render();
+  }
+  function pointerUp(e) {
+    isDrawing = false;
+    canvas.releasePointerCapture(e.pointerId);
+  }
+  canvas.addEventListener('pointerdown', pointerDown);
+  canvas.addEventListener('pointermove', drawAt);
+  canvas.addEventListener('pointerup', pointerUp);
+  canvas.addEventListener('pointerleave', ()=>{ isDrawing=false; });
+  canvas.addEventListener('contextmenu', (e)=>e.preventDefault());
+
+  // Status
+  let lastActiveCount = 0;
+  function updateStatus() {
+    let label = 'Gen: ' + generation;
+    if (engine===engines.life) label += ' • Alive: ' + lastActiveCount;
+    else if (engine===engines.brian) label += ' • Non-off: ' + lastActiveCount;
+    else label += ' • Non-empty: ' + lastActiveCount;
+    statusEl.textContent = label;
+  }
+
+  // Controls
+  btnPlay.addEventListener('click', () => {
+    running = !running;
+    btnPlay.textContent = running ? 'Pause' : 'Play';
+    lastTime = 0;
+    accumulator = 0;
+    if (running) requestAnimationFrame(tick);
+  });
+  btnStep.addEventListener('click', () => {
+    if (!running) {
+      doStep();
+      render();
+    }
+  });
+  speed.addEventListener('input', () => {
+    fps = parseInt(speed.value,10);
+    speedVal.textContent = fps;
+  });
+  cellSizeEl.addEventListener('input', () => {
+    cellSize = parseInt(cellSizeEl.value,10);
+    cellSizeVal.textContent = cellSize;
+    setCanvasCSSSize();
+    render();
+  });
+  showGrid.addEventListener('change', render);
+  wrapEl.addEventListener('change', () => { wrap = wrapEl.checked; });
+  ruleFamily.addEventListener('change', () => { setEngine(ruleFamily.value); });
+  btnResize.addEventListener('click', () => {
+    const newW = parseInt(widthEl.value,10);
+    const newH = parseInt(heightEl.value,10);
+    resizeGrid(newW, newH);
+  });
+  btnClear.addEventListener('click', () => { clearGrid(); });
+  btnRandom.addEventListener('click', () => { randomizeGrid(parseFloat(randDensity.value)); });
+  randDensity.addEventListener('input', () => { randVal.textContent = (+randDensity.value).toFixed(2); });
+
+  // Save / Load
+  btnExport.addEventListener('click', () => {
+    const payload = {
+      v: 1,
+      W, H,
+      engine: ruleFamily.value,
+      lifeRule: lifeRule.value,
+      wrap,
+      palette, // note: rgb arrays
+      data: Array.from(grid),
+      generation
+    };
+    const blob = new Blob([JSON.stringify(payload)], {type:'application/json'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const name = `ca_${ruleFamily.value}_${W}x${H}_gen${generation}.json`;
+    a.download = name;
+    a.click();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 1000);
+  });
+  btnImport.addEventListener('click', ()=>fileImport.click());
+  fileImport.addEventListener('change', (e)=>{
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const obj = JSON.parse(reader.result);
+        if (obj.v!==1 || !obj.W || !obj.H || !obj.data) throw new Error('Invalid file');
+        widthEl.value = obj.W; heightEl.value = obj.H;
+        resizeGrid(obj.W, obj.H);
+        ruleFamily.value = obj.engine || 'life';
+        setEngine(ruleFamily.value);
+        if (ruleFamily.value==='life' && obj.lifeRule) {
+          lifeRule.value = obj.lifeRule;
+          safeParseLifeRule();
+        }
+        wrapEl.checked = !!obj.wrap;
+        wrap = wrapEl.checked;
+        if (Array.isArray(obj.palette) && obj.palette.length === engines[ruleFamily.value].states) {
+          palette = obj.palette;
+          updatePaletteUI();
+        }
+        grid.set(new Uint8Array(obj.data.slice(0, W*H)));
+        generation = obj.generation || 0;
+        lastActiveCount = 0;
+        render();
+      }catch(err){
+        alert('Failed to load: '+err.message);
+      } finally {
+        fileImport.value = '';
+      }
+    };
+    reader.readAsText(file);
+  });
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e)=>{
+    if (e.target && /INPUT|TEXTAREA|SELECT/.test(e.target.tagName)) return;
+    const k = e.key.toLowerCase();
+    if (k===' ') {
+      e.preventDefault();
+      btnPlay.click();
+    } else if (k==='.' || k==='n') {
+      btnStep.click();
+    } else if (k==='r') {
+      if (stampSel.value!=='None' && currentStamp) {
+        stampRotateBtn.click();
+      } else {
+        btnRandom.click();
+      }
+    } else if (k==='m') {
+      if (stampSel.value!=='None' && currentStamp) stampMirrorBtn.click();
+    } else if (k==='c') {
+      btnClear.click();
+    } else if (k==='g') {
+      showGrid.checked = !showGrid.checked;
+      render();
+    } else if (k==='w') {
+      wrapEl.checked = !wrapEl.checked;
+      wrap = wrapEl.checked;
+    } else if (k==='+' || k==='=') {
+      speed.value = clamp(parseInt(speed.value,10)+1, +speed.min, +speed.max);
+      speed.dispatchEvent(new Event('input'));
+    } else if (k==='-') {
+      speed.value = clamp(parseInt(speed.value,10)-1, +speed.min, +speed.max);
+      speed.dispatchEvent(new Event('input'));
+    } else if (k>='1' && k<='9') {
+      const idx = Math.min(statesCount-1, parseInt(k,10)-1);
+      brush = idx;
+      updatePaletteUI();
+    }
+  });
+
+  // Initialize
+  function init() {
+    setEngine('life');
+    resetOffscreen();
+    setCanvasCSSSize();
+    updatePaletteUI();
+    populateStamps();
+    render();
+  }
+  init();
+
+  // For responsiveness: center large canvas inside scroll area on resize
+  let resizeTimer;
+  window.addEventListener('resize', ()=>{
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(()=>render(), 50);
+  });
+})();
+</script>
+</body>
+</html>
