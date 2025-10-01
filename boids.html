@@ -1,0 +1,495 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Boids (Flocking) Simulator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0b0f18;
+      --panel-bg: rgba(18, 24, 38, 0.9);
+      --panel-border: rgba(255,255,255,0.15);
+      --text: #e5e9f0;
+      --muted: #a3acc3;
+      --accent: #6aa4ff;
+      --accent-2: #79d2a6;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol";
+      user-select: none;
+      overflow: hidden;
+    }
+    #canvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      background: radial-gradient(1200px 800px at 20% 20%, #0d1322 0%, var(--bg) 70%);
+      cursor: crosshair;
+    }
+    #ui {
+      position: fixed;
+      top: 12px;
+      left: 12px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: var(--panel-bg);
+      border: 1px solid var(--panel-border);
+      backdrop-filter: blur(6px);
+      box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+      max-width: min(92vw, 360px);
+    }
+    #title {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.4px;
+      margin: 0 0 8px 0;
+      color: var(--text);
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+    #subtitle {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+      align-items: center;
+      margin: 8px 0;
+    }
+    .label {
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .value {
+      font-size: 12px;
+      color: var(--text);
+      min-width: 3ch;
+      text-align: right;
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 26px;
+      background: transparent;
+    }
+    input[type="range"]::-webkit-slider-runnable-track {
+      height: 6px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      border-radius: 10px;
+      opacity: 0.6;
+    }
+    input[type="range"]::-moz-range-track {
+      height: 6px;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      border-radius: 10px;
+      opacity: 0.6;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      margin-top: -5px;
+      background: #fff;
+      border: 2px solid #c9d6ff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid #c9d6ff;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+    #bar {
+      display: flex;
+      gap: 8px;
+      margin-top: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    button {
+      font-size: 12px;
+      padding: 6px 10px;
+      background: transparent;
+      color: var(--text);
+      border-radius: 8px;
+      border: 1px solid var(--panel-border);
+      cursor: pointer;
+    }
+    button:hover {
+      border-color: #7a87a7;
+      background: rgba(255,255,255,0.03);
+    }
+    .hint {
+      font-size: 11px;
+      color: var(--muted);
+      opacity: 0.9;
+    }
+    @media (max-width: 540px) {
+      #ui { max-width: 92vw; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+
+  <div id="ui" role="group" aria-label="Controls">
+    <div id="title">Boids (Flocking) Simulator <span class="hint">single-file</span></div>
+    <div id="subtitle">Adjust the three flocking rules: alignment, cohesion, separation.</div>
+
+    <div class="label">Alignment</div>
+    <div class="row">
+      <input id="align" type="range" min="0" max="3" step="0.01" value="1.00" />
+      <div class="value" id="alignVal">1.00</div>
+    </div>
+
+    <div class="label">Cohesion</div>
+    <div class="row">
+      <input id="cohesion" type="range" min="0" max="3" step="0.01" value="1.00" />
+      <div class="value" id="cohesionVal">1.00</div>
+    </div>
+
+    <div class="label">Separation</div>
+    <div class="row">
+      <input id="separation" type="range" min="0" max="3" step="0.01" value="1.40" />
+      <div class="value" id="separationVal">1.40</div>
+    </div>
+
+    <div id="bar">
+      <button id="pauseBtn" title="Space to toggle">Pause</button>
+      <button id="resetBtn">Reset</button>
+      <span class="hint" id="stats">Boids: — | FPS: —</span>
+    </div>
+    <div class="hint">Tip: Click the canvas to add boids. Drag to "spray" more.</div>
+  </div>
+
+  <script>
+    "use strict";
+
+    // Canvas setup
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d", { alpha: false });
+    let W = 0, H = 0, DPR = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    function resize() {
+      W = Math.floor(window.innerWidth);
+      H = Math.floor(window.innerHeight);
+      canvas.width = Math.floor(W * DPR);
+      canvas.height = Math.floor(H * DPR);
+      canvas.style.width = W + "px";
+      canvas.style.height = H + "px";
+      ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    }
+    window.addEventListener("resize", resize, { passive: true });
+    resize();
+
+    // Parameters
+    const params = {
+      alignment: 1.00,
+      cohesion: 1.00,
+      separation: 1.40,
+
+      perception: 68,       // Neighbor radius (px)
+      separationDist: 28,   // Separation distance (px)
+      maxSpeed: 120,        // px/s
+      maxForce: 200,        // px/s^2
+      initialCount: 160
+    };
+
+    // Controls
+    const $align = document.getElementById("align");
+    const $cohesion = document.getElementById("cohesion");
+    const $separation = document.getElementById("separation");
+    const $alignVal = document.getElementById("alignVal");
+    const $cohesionVal = document.getElementById("cohesionVal");
+    const $separationVal = document.getElementById("separationVal");
+    const $pauseBtn = document.getElementById("pauseBtn");
+    const $resetBtn = document.getElementById("resetBtn");
+    const $stats = document.getElementById("stats");
+
+    function bindSlider(input, valueEl, onChange) {
+      const update = () => {
+        const v = Number(input.value);
+        valueEl.textContent = v.toFixed(2);
+        onChange(v);
+      };
+      input.addEventListener("input", update);
+      update();
+    }
+    bindSlider($align, $alignVal, v => params.alignment = v);
+    bindSlider($cohesion, $cohesionVal, v => params.cohesion = v);
+    bindSlider($separation, $separationVal, v => params.separation = v);
+
+    // Boid class
+    class Boid {
+      constructor(x, y, vx, vy) {
+        this.x = x;
+        this.y = y;
+        this.vx = vx;
+        this.vy = vy;
+        this.ax = 0;
+        this.ay = 0;
+      }
+      applyForce(fx, fy) {
+        this.ax += fx;
+        this.ay += fy;
+      }
+      update(dt) {
+        // Integrate acceleration -> velocity
+        this.vx += this.ax * dt;
+        this.vy += this.ay * dt;
+
+        // Limit speed
+        const sp2 = this.vx * this.vx + this.vy * this.vy;
+        const maxS = params.maxSpeed;
+        const maxS2 = maxS * maxS;
+        if (sp2 > maxS2 && sp2 > 0) {
+          const s = maxS / Math.sqrt(sp2);
+          this.vx *= s;
+          this.vy *= s;
+        }
+
+        // Integrate velocity -> position
+        this.x += this.vx * dt;
+        this.y += this.vy * dt;
+
+        // Edge bounce
+        if (this.x < 0) { this.x = 0; if (this.vx < 0) this.vx = -this.vx; }
+        else if (this.x > W) { this.x = W; if (this.vx > 0) this.vx = -this.vx; }
+        if (this.y < 0) { this.y = 0; if (this.vy < 0) this.vy = -this.vy; }
+        else if (this.y > H) { this.y = H; if (this.vy > 0) this.vy = -this.vy; }
+
+        // Reset acceleration
+        this.ax = 0;
+        this.ay = 0;
+      }
+    }
+
+    // World state
+    let boids = [];
+
+    function randRange(a, b) { return a + Math.random() * (b - a); }
+    function addBoid(x, y) {
+      const angle = randRange(0, Math.PI * 2);
+      const speed = randRange(params.maxSpeed * 0.4, params.maxSpeed * 0.9);
+      boids.push(new Boid(
+        x,
+        y,
+        Math.cos(angle) * speed,
+        Math.sin(angle) * speed
+      ));
+    }
+    function seedBoids(n) {
+      boids.length = 0;
+      for (let i = 0; i < n; i++) {
+        addBoid(randRange(0, W), randRange(0, H));
+      }
+    }
+    seedBoids(params.initialCount);
+
+    // Interaction: click or drag to add boids
+    let spraying = false;
+    function pointerPos(e) {
+      const rect = canvas.getBoundingClientRect();
+      const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+      const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+      return { x, y };
+    }
+    canvas.addEventListener("pointerdown", (e) => {
+      spraying = true;
+      const p = pointerPos(e);
+      for (let i = 0; i < 8; i++) addBoid(p.x + randRange(-8, 8), p.y + randRange(-8, 8));
+    });
+    window.addEventListener("pointermove", (e) => {
+      if (!spraying) return;
+      const p = pointerPos(e);
+      for (let i = 0; i < 2; i++) addBoid(p.x + randRange(-10, 10), p.y + randRange(-10, 10));
+    });
+    window.addEventListener("pointerup", () => spraying = false);
+    window.addEventListener("pointercancel", () => spraying = false);
+
+    // Pause / Reset
+    let paused = false;
+    function setPause(p) {
+      paused = p;
+      $pauseBtn.textContent = paused ? "Resume" : "Pause";
+    }
+    $pauseBtn.addEventListener("click", () => setPause(!paused));
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "Space") { e.preventDefault(); setPause(!paused); }
+      if (e.key === "r" || e.key === "R") { seedBoids(params.initialCount); }
+    });
+    $resetBtn.addEventListener("click", () => seedBoids(params.initialCount));
+
+    // Flocking behavior (naive O(n^2), fine for a few hundred boids)
+    const tmp = { ax: 0, ay: 0, cx: 0, cy: 0, sx: 0, sy: 0 };
+    function flock(dt) {
+      const n = boids.length;
+      const pr = params.perception;
+      const pr2 = pr * pr;
+      const sepD = params.separationDist;
+      const sepD2 = sepD * sepD;
+
+      // Compute steering for each boid
+      for (let i = 0; i < n; i++) {
+        const b = boids[i];
+
+        let count = 0;
+        let ax = 0, ay = 0; // alignment sum of velocities
+        let cx = 0, cy = 0; // cohesion sum of positions
+        let sx = 0, sy = 0; // separation sum of away vectors
+
+        for (let j = 0; j < n; j++) {
+          if (i === j) continue;
+          const o = boids[j];
+          const dx = o.x - b.x;
+          const dy = o.y - b.y;
+          const d2 = dx * dx + dy * dy;
+          if (d2 < pr2) {
+            count++;
+            ax += o.vx;
+            ay += o.vy;
+            cx += o.x;
+            cy += o.y;
+
+            if (d2 < sepD2 && d2 > 0.0001) {
+              const invD = 1 / Math.sqrt(d2);
+              // Weighted away vector (stronger when closer)
+              sx -= dx * invD;
+              sy -= dy * invD;
+            }
+          }
+        }
+
+        // Desired steering vectors
+        let steerAX = 0, steerAY = 0;
+        let steerCX = 0, steerCY = 0;
+        let steerSX = 0, steerSY = 0;
+
+        const maxS = params.maxSpeed;
+        const maxF = params.maxForce;
+
+        if (count > 0) {
+          // Alignment: steer toward average heading
+          ax /= count; ay /= count;
+          let len = Math.hypot(ax, ay);
+          if (len > 0.0001) {
+            ax = (ax / len) * maxS; ay = (ay / len) * maxS;
+            steerAX = ax - b.vx; steerAY = ay - b.vy;
+            // limit to maxForce
+            const m = Math.hypot(steerAX, steerAY);
+            if (m > maxF) { steerAX *= maxF / m; steerAY *= maxF / m; }
+          }
+
+          // Cohesion: steer toward center of mass
+          cx /= count; cy /= count;
+          let dx = cx - b.x, dy = cy - b.y;
+          let d = Math.hypot(dx, dy);
+          if (d > 0.0001) {
+            dx = (dx / d) * maxS; dy = (dy / d) * maxS;
+            steerCX = dx - b.vx; steerCY = dy - b.vy;
+            const m = Math.hypot(steerCX, steerCY);
+            if (m > maxF) { steerCX *= maxF / m; steerCY *= maxF / m; }
+          }
+
+          // Separation: steer away from close neighbors
+          let sl = Math.hypot(sx, sy);
+          if (sl > 0.0001) {
+            sx = (sx / sl) * maxS; sy = (sy / sl) * maxS;
+            steerSX = sx - b.vx; steerSY = sy - b.vy;
+            const m = Math.hypot(steerSX, steerSY);
+            if (m > maxF) { steerSX *= maxF / m; steerSY *= maxF / m; }
+          }
+        }
+
+        // Combine with weights
+        const wA = params.alignment;
+        const wC = params.cohesion;
+        const wS = params.separation;
+
+        b.applyForce((steerAX * wA) + (steerCX * wC) + (steerSX * wS),
+                     (steerAY * wA) + (steerCY * wC) + (steerSY * wS));
+      }
+
+      // Update all boids
+      for (let i = 0; i < n; i++) boids[i].update(dt);
+    }
+
+    // Rendering
+    function drawBoid(b) {
+      const x = b.x, y = b.y;
+      const angle = Math.atan2(b.vy, b.vx);
+      const ca = Math.cos(angle), sa = Math.sin(angle);
+      const size = 4.5;
+      const len = size * 3.0;
+      const w = size * 1.6;
+
+      const tipX = x + ca * len;
+      const tipY = y + sa * len;
+      const leftX = x - ca * size + sa * w;
+      const leftY = y - sa * size - ca * w;
+      const rightX = x - ca * size - sa * w;
+      const rightY = y - sa * size + ca * w;
+
+      ctx.beginPath();
+      ctx.moveTo(tipX, tipY);
+      ctx.lineTo(leftX, leftY);
+      ctx.lineTo(rightX, rightY);
+      ctx.closePath();
+
+      // Color by speed
+      const sp = Math.hypot(b.vx, b.vy);
+      const t = Math.min(1, sp / params.maxSpeed);
+      const r = Math.floor(120 + 80 * t);
+      const g = Math.floor(180 + 50 * t);
+      const bl = Math.floor(255 - 80 * t);
+      ctx.fillStyle = `rgb(${r},${g},${bl})`;
+      ctx.fill();
+    }
+
+    function render() {
+      ctx.fillStyle = "#0b0f18";
+      ctx.fillRect(0, 0, W, H);
+
+      const n = boids.length;
+      for (let i = 0; i < n; i++) drawBoid(boids[i]);
+    }
+
+    // Main loop with FPS meter
+    let last = performance.now();
+    let fpsAccum = 0, fpsFrames = 0, fpsDisplay = 0;
+    function loop(now) {
+      const dt = Math.min((now - last) / 1000, 0.033); // clamp to ~30 FPS step max
+      last = now;
+
+      if (!paused) {
+        flock(dt);
+      }
+      render();
+
+      // FPS
+      fpsAccum += dt; fpsFrames++;
+      if (fpsAccum >= 0.5) {
+        fpsDisplay = Math.round(fpsFrames / fpsAccum);
+        fpsAccum = 0; fpsFrames = 0;
+        $stats.textContent = `Boids: ${boids.length} | FPS: ${fpsDisplay}`;
+      }
+
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>
