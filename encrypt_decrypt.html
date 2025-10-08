@@ -1,0 +1,469 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Client-side File Encrypt/Decrypt (AES-GCM + PBKDF2)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root {
+      --bg: #0f172a;
+      --panel: #111827;
+      --muted: #94a3b8;
+      --text: #e5e7eb;
+      --accent: #2563eb;
+      --accent-2: #7c3aed;
+      --ok: #10b981;
+      --err: #ef4444;
+      --border: #1f2937;
+      --field: #0b1220;
+      --field-border: #2a3447;
+      --btn: #1d4ed8;
+      --btn-hover: #1e40af;
+      --warn-bg: #2a0b0b;
+      --warn: #f87171;
+      font-synthesis-weight: none;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0; background: var(--bg); color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, Noto Sans, "Apple Color Emoji","Segoe UI Emoji";
+    }
+    header {
+      padding: 24px 16px; text-align: center; border-bottom: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(37,99,235,.15), transparent 60%);
+    }
+    header h1 { margin: 0; font-size: 22px; letter-spacing: .2px; }
+    header p { margin: 8px 0 0; color: var(--muted); font-size: 14px; }
+    .wrap { max-width: 980px; margin: 24px auto; padding: 0 16px 64px; }
+
+    .warning {
+      background: var(--warn-bg); color: var(--warn);
+      border: 1px solid rgba(248,113,113,.25);
+      padding: 10px 12px; border-radius: 8px; margin-bottom: 16px; font-size: 14px;
+    }
+
+    .grid {
+      display: grid; grid-template-columns: 1fr; gap: 16px;
+    }
+    @media (min-width: 900px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+    }
+
+    .card {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+      padding: 16px 16px 12px;
+      box-shadow: 0 12px 24px rgba(0,0,0,.25);
+    }
+    .card h2 { margin: 4px 0 12px; font-size: 18px; }
+    .hint { color: var(--muted); font-size: 12px; margin: 4px 0 10px; }
+    .row { display: flex; gap: 10px; align-items: center; margin: 8px 0; }
+    .row.stack { flex-direction: column; align-items: stretch; }
+    .row .grow { flex: 1; }
+
+    label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+    input[type="file"] {
+      width: 100%;
+      background: var(--field); border: 1px dashed var(--field-border); color: var(--text);
+      border-radius: 10px; padding: 12px; cursor: pointer;
+    }
+    input[type="password"], input[type="text"], input[type="number"] {
+      width: 100%; background: var(--field); border: 1px solid var(--field-border);
+      color: var(--text); border-radius: 10px; padding: 10px 12px; outline: none;
+    }
+    input[type="number"] { -moz-appearance: textfield; }
+    input[type="number"]::-webkit-outer-spin-button,
+    input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--btn); color: white; border: none; border-radius: 10px;
+      padding: 10px 14px; cursor: pointer; font-weight: 600; letter-spacing: .2px;
+      transition: background .15s ease;
+    }
+    .btn:hover { background: var(--btn-hover); }
+    .btn.secondary {
+      background: transparent; color: var(--text); border: 1px solid var(--field-border);
+    }
+    .btn-row { display: flex; gap: 10px; margin-top: 8px; }
+
+    .status { font-size: 13px; margin-top: 8px; min-height: 18px; }
+    .status.ok { color: var(--ok); }
+    .status.err { color: var(--err); }
+    .small { font-size: 12px; color: var(--muted); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+
+    details {
+      margin-top: 12px; border-top: 1px solid var(--border); padding-top: 10px;
+    }
+    summary { cursor: pointer; color: var(--muted); }
+    code.inline { background: #0a0f1c; border: 1px solid var(--field-border); border-radius: 6px; padding: 2px 6px; }
+    .kdf-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>AES‑GCM File Encrypt/Decrypt (PBKDF2)</h1>
+    <p>All operations happen locally, in your browser. No dependencies, no network.</p>
+  </header>
+
+  <div class="wrap">
+    <div id="secure-warning" class="warning" style="display:none">
+      This page is not running in a secure context. On some browsers, Web Crypto may be unavailable.
+      For best security and compatibility, open this file via https (or from localhost).
+    </div>
+
+    <div class="grid">
+      <section class="card" id="enc-card">
+        <h2>Encrypt</h2>
+        <div class="row stack">
+          <label for="enc-file">File</label>
+          <input type="file" id="enc-file" />
+        </div>
+
+        <div class="row stack">
+          <label for="enc-pass">Password</label>
+          <input type="password" id="enc-pass" autocomplete="new-password" placeholder="Strong password" />
+        </div>
+        <div class="row stack">
+          <label for="enc-pass2">Confirm password</label>
+          <input type="password" id="enc-pass2" autocomplete="new-password" placeholder="Type it again" />
+          <div class="row" style="margin-top:6px">
+            <input type="checkbox" id="enc-show" />
+            <label for="enc-show" style="margin: 0;">Show password</label>
+          </div>
+        </div>
+
+        <div class="kdf-row">
+          <div class="row stack">
+            <label for="enc-iters">PBKDF2 iterations</label>
+            <input type="number" id="enc-iters" min="10000" step="1000" value="210000" />
+            <div class="hint">More iterations = more secure, but slower. Default 210,000.</div>
+          </div>
+          <div>
+            <button class="btn secondary" id="btn-bench" title="Measure how long PBKDF2(210k) takes on your device">Benchmark</button>
+          </div>
+        </div>
+
+        <div class="btn-row">
+          <button class="btn" id="btn-encrypt">Encrypt file</button>
+          <a class="btn secondary" id="dl-encrypted" href="#" download style="display:none">Download</a>
+        </div>
+        <div class="status mono" id="enc-status"></div>
+
+        <details>
+          <summary>File format details</summary>
+          <div class="small">
+            Encrypted output layout (all values are plaintext except ciphertext):
+            <div class="mono" style="white-space: pre-wrap; margin-top:6px">
+MAGIC[6]="AESGCM" | VER[1]=1 | SLEN[1] | IVLEN[1] | ITER[4,BE] | SALT[SLEN] | IV[IVLEN] | CIPHERTEXT[...]
+AAD = header bytes above (authenticated by GCM tag)
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <section class="card" id="dec-card">
+        <h2>Decrypt</h2>
+        <div class="row stack">
+          <label for="dec-file">Encrypted file</label>
+          <input type="file" id="dec-file" />
+        </div>
+        <div class="row stack">
+          <label for="dec-pass">Password</label>
+          <input type="password" id="dec-pass" autocomplete="current-password" placeholder="Password used to encrypt" />
+          <div class="row" style="margin-top:6px">
+            <input type="checkbox" id="dec-show" />
+            <label for="dec-show" style="margin: 0;">Show password</label>
+          </div>
+        </div>
+        <div class="btn-row">
+          <button class="btn" id="btn-decrypt">Decrypt file</button>
+          <a class="btn secondary" id="dl-decrypted" href="#" download style="display:none">Download</a>
+        </div>
+        <div class="status mono" id="dec-status"></div>
+      </section>
+    </div>
+
+    <section class="card" style="margin-top:16px">
+      <h2>Notes</h2>
+      <ul class="small">
+        <li>Uses AES‑GCM (256‑bit) with PBKDF2‑HMAC‑SHA‑256 key derivation.</li>
+        <li>Salt = 16 bytes; IV/nonce = 12 bytes; AAD authenticates header parameters.</li>
+        <li>Wrong password or altered files will fail to decrypt with an authentication error.</li>
+        <li>Very large files are processed in memory (no streaming), which may be slow or memory intensive.</li>
+      </ul>
+    </section>
+  </div>
+
+  <script>
+    // ===== Utility helpers =====
+    const te = new TextEncoder();
+    const td = new TextDecoder();
+    const MAGIC = te.encode("AESGCM"); // 6 bytes
+    const VERSION = 1;
+    const DEF_SALT_LEN = 16;
+    const DEF_IV_LEN = 12;
+
+    const $ = sel => document.querySelector(sel);
+    const encFileEl = $("#enc-file");
+    const encPassEl = $("#enc-pass");
+    const encPass2El = $("#enc-pass2");
+    const encShowEl = $("#enc-show");
+    const encItersEl = $("#enc-iters");
+    const encStatusEl = $("#enc-status");
+    const btnEncrypt = $("#btn-encrypt");
+    const dlEncrypted = $("#dl-encrypted");
+
+    const decFileEl = $("#dec-file");
+    const decPassEl = $("#dec-pass");
+    const decShowEl = $("#dec-show");
+    const decStatusEl = $("#dec-status");
+    const btnDecrypt = $("#btn-decrypt");
+    const dlDecrypted = $("#dl-decrypted");
+
+    const btnBench = $("#btn-bench");
+    const warnEl = $("#secure-warning");
+
+    if (!isSecureContext) {
+      warnEl.style.display = "";
+    }
+    if (!('crypto' in self) || !('subtle' in crypto)) {
+      setStatus(encStatusEl, "Web Crypto API not available in this context.", true);
+      setStatus(decStatusEl, "Web Crypto API not available in this context.", true);
+    }
+
+    function setStatus(el, msg, isErr = false) {
+      el.classList.remove("ok","err");
+      if (!msg) { el.textContent = ""; return; }
+      el.classList.add(isErr ? "err" : "ok");
+      el.textContent = msg;
+    }
+    function formatBytes(n) {
+      if (n < 1024) return `${n} B`;
+      const u = ["KB","MB","GB","TB"];
+      let i = -1;
+      do { n = n / 1024; i++; } while (n >= 1024 && i < u.length-1);
+      return `${n.toFixed(2)} ${u[i]}`;
+    }
+    function u32ToBE(n) {
+      const b = new Uint8Array(4);
+      b[0] = (n >>> 24) & 0xff;
+      b[1] = (n >>> 16) & 0xff;
+      b[2] = (n >>> 8) & 0xff;
+      b[3] = (n >>> 0) & 0xff;
+      return b;
+    }
+    function u32FromBE(bytes, off = 0) {
+      return ((bytes[off] << 24) | (bytes[off+1] << 16) | (bytes[off+2] << 8) | (bytes[off+3] << 0)) >>> 0;
+    }
+    function concatU8(a, b) {
+      const out = new Uint8Array(a.length + b.length);
+      out.set(a, 0); out.set(b, a.length);
+      return out;
+    }
+    function safeClearInput(el) {
+      try { el.value = ""; } catch {}
+    }
+
+    // ===== Crypto core =====
+    async function deriveAesGcmKey(password, salt, iterations) {
+      const pwBytes = te.encode(password);
+      try {
+        const baseKey = await crypto.subtle.importKey(
+          "raw",
+          pwBytes,
+          { name: "PBKDF2" },
+          false,
+          ["deriveKey"]
+        );
+        const key = await crypto.subtle.deriveKey(
+          { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
+          baseKey,
+          { name: "AES-GCM", length: 256 },
+          false,
+          ["encrypt","decrypt"]
+        );
+        return key;
+      } finally {
+        // Best-effort clear password bytes
+        pwBytes.fill(0);
+      }
+    }
+
+    function buildHeader(salt, iv, iterations) {
+      if (salt.length > 255 || iv.length > 255) throw new Error("Salt/IV too long");
+      const hdr = new Uint8Array(6 + 1 + 1 + 1 + 4 + salt.length + iv.length);
+      let o = 0;
+      hdr.set(MAGIC, o); o += MAGIC.length;  // 6
+      hdr[o++] = VERSION;                    // 1
+      hdr[o++] = salt.length & 0xff;         // 1
+      hdr[o++] = iv.length & 0xff;           // 1
+      hdr.set(u32ToBE(iterations), o); o += 4; // 4
+      hdr.set(salt, o); o += salt.length;
+      hdr.set(iv, o); o += iv.length;
+      return hdr;
+    }
+
+    function parseHeader(bufU8) {
+      if (bufU8.length < 13) throw new Error("File too short");
+      const magic = bufU8.subarray(0, 6);
+      if (!equalU8(magic, MAGIC)) throw new Error("Bad magic");
+      const ver = bufU8[6];
+      if (ver !== VERSION) throw new Error(`Unsupported version: ${ver}`);
+      const slen = bufU8[7];
+      const ivlen = bufU8[8];
+      const iters = u32FromBE(bufU8, 9);
+      const headerLen = 13 + slen + ivlen;
+      if (bufU8.length < headerLen) throw new Error("Truncated header");
+      const salt = bufU8.subarray(13, 13 + slen);
+      const iv = bufU8.subarray(13 + slen, 13 + slen + ivlen);
+      return { headerLen, salt: new Uint8Array(salt), iv: new Uint8Array(iv), iterations: iters, version: ver };
+    }
+
+    function equalU8(a, b) {
+      if (a.length !== b.length) return false;
+      for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+      return true;
+    }
+
+    async function encryptArrayBuffer(plainBuf, password, iterations) {
+      const salt = crypto.getRandomValues(new Uint8Array(DEF_SALT_LEN));
+      const iv = crypto.getRandomValues(new Uint8Array(DEF_IV_LEN));
+      const header = buildHeader(salt, iv, iterations);
+
+      const key = await deriveAesGcmKey(password, salt, iterations);
+      const ct = await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv, additionalData: header },
+        key,
+        plainBuf
+      );
+      const out = concatU8(header, new Uint8Array(ct));
+      return out;
+    }
+
+    async function decryptArrayBuffer(encBuf, password) {
+      const u8 = new Uint8Array(encBuf);
+      const { headerLen, salt, iv, iterations } = parseHeader(u8);
+      const headerAAD = u8.subarray(0, headerLen);
+      const ciphertext = u8.subarray(headerLen);
+      if (ciphertext.length <= 16) throw new Error("Ciphertext too short");
+
+      const key = await deriveAesGcmKey(password, salt, iterations);
+      const pt = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv, additionalData: headerAAD },
+        key,
+        ciphertext
+      );
+      return new Uint8Array(pt);
+    }
+
+    // ===== UI handlers =====
+    encShowEl.addEventListener("change", () => {
+      const type = encShowEl.checked ? "text" : "password";
+      encPassEl.type = type;
+      encPass2El.type = type;
+    });
+    decShowEl.addEventListener("change", () => {
+      decPassEl.type = decShowEl.checked ? "text" : "password";
+    });
+
+    btnEncrypt.addEventListener("click", async () => {
+      setStatus(encStatusEl, "");
+      dlEncrypted.style.display = "none";
+      dlEncrypted.removeAttribute("href");
+      dlEncrypted.removeAttribute("download");
+
+      const file = encFileEl.files && encFileEl.files[0];
+      const pw = encPassEl.value || "";
+      const pw2 = encPass2El.value || "";
+      const iterations = parseInt(encItersEl.value, 10);
+
+      if (!file) return setStatus(encStatusEl, "Select a file to encrypt.", true);
+      if (!pw) return setStatus(encStatusEl, "Enter a password.", true);
+      if (pw !== pw2) return setStatus(encStatusEl, "Passwords do not match.", true);
+      if (!Number.isFinite(iterations) || iterations < 10000) {
+        return setStatus(encStatusEl, "Iterations must be a number ≥ 10000.", true);
+      }
+      if (pw.length < 8) {
+        const proceed = confirm("Password is shorter than 8 characters. Continue?");
+        if (!proceed) return;
+      }
+
+      try {
+        setStatus(encStatusEl, `Reading ${file.name} (${formatBytes(file.size)}) ...`);
+        const plain = await file.arrayBuffer();
+        setStatus(encStatusEl, `Encrypting with PBKDF2(${iterations}) + AES-GCM...`);
+        const out = await encryptArrayBuffer(plain, pw, iterations);
+
+        const outName = file.name + ".enc";
+        const blob = new Blob([out], { type: "application/octet-stream" });
+        const url = URL.createObjectURL(blob);
+        dlEncrypted.href = url;
+        dlEncrypted.download = outName;
+        dlEncrypted.style.display = "inline-flex";
+        setStatus(encStatusEl, `Done. Encrypted size ${formatBytes(out.byteLength)}. Click Download.`);
+      } catch (e) {
+        console.error(e);
+        setStatus(encStatusEl, `Error: ${e.message || e}`, true);
+      } finally {
+        // Best-effort clear password fields
+        safeClearInput(encPassEl);
+        safeClearInput(encPass2El);
+      }
+    });
+
+    btnDecrypt.addEventListener("click", async () => {
+      setStatus(decStatusEl, "");
+      dlDecrypted.style.display = "none";
+      dlDecrypted.removeAttribute("href");
+      dlDecrypted.removeAttribute("download");
+
+      const file = decFileEl.files && decFileEl.files[0];
+      const pw = decPassEl.value || "";
+      if (!file) return setStatus(decStatusEl, "Select an encrypted file.", true);
+      if (!pw) return setStatus(decStatusEl, "Enter the password.", true);
+
+      try {
+        setStatus(decStatusEl, `Reading ${file.name} (${formatBytes(file.size)}) ...`);
+        const enc = await file.arrayBuffer();
+        setStatus(decStatusEl, "Deriving key and decrypting...");
+        const plain = await decryptArrayBuffer(enc, pw);
+
+        // Name suggestion: strip .enc if present
+        let outName = file.name.endsWith(".enc") ? file.name.slice(0, -4) : (file.name + ".decrypted");
+        const blob = new Blob([plain], { type: "application/octet-stream" });
+        const url = URL.createObjectURL(blob);
+        dlDecrypted.href = url;
+        dlDecrypted.download = outName || "decrypted.bin";
+        dlDecrypted.style.display = "inline-flex";
+        setStatus(decStatusEl, `Done. Decrypted size ${formatBytes(plain.byteLength)}. Click Download.`);
+      } catch (e) {
+        console.error(e);
+        const msg = (e && e.name === "OperationError")
+          ? "Authentication failed. Wrong password or file is corrupted."
+          : (e.message || String(e));
+        setStatus(decStatusEl, `Error: ${msg}`, true);
+      } finally {
+        safeClearInput(decPassEl);
+      }
+    });
+
+    btnBench.addEventListener("click", async () => {
+      const sample = te.encode("benchmark");
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      const iterations = parseInt(encItersEl.value || "210000", 10);
+      const pw = Math.random().toString(36) + Math.random().toString(36);
+      try {
+        const t0 = performance.now();
+        const key = await deriveAesGcmKey(pw, salt, iterations);
+        // Tiny encrypt to include AES overhead too
+        await crypto.subtle.encrypt({ name: "AES-GCM", iv: crypto.getRandomValues(new Uint8Array(12)) }, key, sample);
+        const dt = performance.now() - t0;
+        setStatus(encStatusEl, `Benchmark: PBKDF2(${iterations}) + AES-GCM took ${dt.toFixed(0)} ms.`);
+      } catch (e) {
+        setStatus(encStatusEl, `Benchmark error: ${e.message || e}`, true);
+      }
+    });
+  </script>
+</body>
+</html>
