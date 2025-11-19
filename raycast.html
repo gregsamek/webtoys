@@ -1,0 +1,395 @@
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Raycaster + Map Editor (Single HTML)</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #111; color: #ddd; font-family: monospace; }
+  #ui { padding: 8px; background: #1a1a1a; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  button { padding: 6px 10px; background: #333; color: #eee; border: 1px solid #555; cursor: pointer; }
+  button:hover { background: #444; }
+  textarea { width: 300px; height: 120px; background: #111; color: #eee; border: 1px solid #333; }
+  #wrap { display: flex; }
+  #canvas { background: #000; }
+  .spacer { flex: 1; }
+</style>
+</head>
+<body>
+<div id="ui">
+  <button id="playBtn">Play Mode</button>
+  <button id="editBtn">Edit Mode</button>
+  <button id="saveBtn">Save Map</button>
+  <button id="loadBtn">Load Map</button>
+  <button id="exportBtn">Export</button>
+  <button id="importBtn">Import</button>
+  <span id="modeLabel">Mode: Play</span>
+  <div class="spacer"></div>
+  <span>Controls: WASD move, ← → rotate, E/Q rotate, Shift run, M toggle mini-map.</span>
+</div>
+<canvas id="canvas" width="960" height="540"></canvas>
+<div id="wrap">
+  <textarea id="mapData" spellcheck="false"></textarea>
+</div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width;
+  const H = canvas.height;
+
+  // Map settings
+  let mapW = 16, mapH = 16;
+  let map = [];
+  function createDefaultMap() {
+    map = new Array(mapW * mapH).fill(0);
+    // Border walls
+    for (let x = 0; x < mapW; x++) {
+      map[x] = 1;
+      map[x + (mapH - 1) * mapW] = 1;
+    }
+    for (let y = 0; y < mapH; y++) {
+      map[y * mapW] = 1;
+      map[(mapW - 1) + y * mapW] = 1;
+    }
+    // Some blocks
+    const blocks = [
+      [3, 3], [3, 4], [3, 5],
+      [8, 3], [9, 3], [10, 3],
+      [8, 8], [9, 8], [10, 8],
+      [6, 10], [6, 11], [6, 12],
+    ];
+    for (const [bx, by] of blocks) map[by * mapW + bx] = 1;
+  }
+  createDefaultMap();
+
+  // Player
+  const player = {
+    x: 2.5,
+    y: 2.5,
+    dir: Math.PI / 4,
+    fov: Math.PI / 3,
+    speed: 3.0, // units per second
+    rotSpeed: 1.8 // radians per second
+  };
+
+  // State
+  let lastTime = performance.now();
+  let keys = {};
+  let mode = 'play'; // 'play' or 'edit'
+  let showMini = true;
+  let brush = 1; // 1 = wall, 0 = empty
+  let mouseDown = false;
+  let paintValue = 1;
+
+  // UI elements
+  const playBtn = document.getElementById('playBtn');
+  const editBtn = document.getElementById('editBtn');
+  const saveBtn = document.getElementById('saveBtn');
+  const loadBtn = document.getElementById('loadBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const importBtn = document.getElementById('importBtn');
+  const modeLabel = document.getElementById('modeLabel');
+  const mapData = document.getElementById('mapData');
+
+  playBtn.onclick = () => setMode('play');
+  editBtn.onclick = () => setMode('edit');
+  saveBtn.onclick = () => saveMap();
+  loadBtn.onclick = () => loadMap();
+  exportBtn.onclick = () => exportMap();
+  importBtn.onclick = () => importMap();
+
+  function setMode(m) {
+    mode = m;
+    modeLabel.textContent = 'Mode: ' + (mode === 'play' ? 'Play' : 'Edit');
+  }
+
+  function saveMap() {
+    localStorage.setItem('raycaster-map', JSON.stringify(map));
+  }
+  function loadMap() {
+    const m = localStorage.getItem('raycaster-map');
+    if (m) {
+      const arr = JSON.parse(m);
+      if (arr.length === mapW * mapH) map = arr;
+    }
+  }
+  function exportMap() {
+    mapData.value = map.join(',');
+  }
+  function importMap() {
+    const txt = mapData.value.trim();
+    if (!txt) return;
+    const parts = txt.split(',').map(x => parseInt(x, 10));
+    if (parts.length === mapW * mapH && parts.every(n => n === 0 || n === 1)) {
+      map = parts;
+    } else {
+      alert('Invalid map data or wrong size.');
+    }
+  }
+
+  // Input
+  window.addEventListener('keydown', (e) => {
+    keys[e.key.toLowerCase()] = true;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+      e.preventDefault();
+    }
+    if (e.key === 'm' || e.key === 'M') showMini = !showMini;
+  });
+  window.addEventListener('keyup', (e) => {
+    keys[e.key.toLowerCase()] = false;
+  });
+  canvas.addEventListener('mousedown', (e) => {
+    mouseDown = true;
+    if (mode === 'edit') handleEditClick(e);
+  });
+  canvas.addEventListener('mouseup', () => mouseDown = false);
+  canvas.addEventListener('mousemove', (e) => {
+    if (mouseDown && mode === 'edit') handleEditClick(e, true);
+  });
+  window.addEventListener('contextmenu', (e) => {
+    if (mode === 'edit') e.preventDefault();
+  });
+
+  function handleEditClick(e, dragging = false) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const cellSize = Math.floor(Math.min(W / mapW, H / mapH));
+    const gx = Math.floor(mx / cellSize);
+    const gy = Math.floor(my / cellSize);
+    if (gx < 0 || gy < 0 || gx >= mapW || gy >= mapH) return;
+    const idx = gy * mapW + gx;
+    if (e.button === 2) {
+      paintValue = 0;
+    } else if (!dragging) {
+      paintValue = map[idx] === 1 ? 0 : 1;
+    }
+    map[idx] = paintValue;
+  }
+
+  function isWall(x, y) {
+    if (x < 0 || y < 0 || x >= mapW || y >= mapH) return true;
+    return map[(y | 0) * mapW + (x | 0)] === 1;
+  }
+
+  function movePlayer(dt) {
+    const moveStep = player.speed * dt * (keys['shift'] ? 1.8 : 1.0);
+    const rotStep = player.rotSpeed * dt;
+
+    // Rotation
+    if (keys['arrowleft'] || keys['q']) player.dir -= rotStep;
+    if (keys['arrowright'] || keys['e']) player.dir += rotStep;
+
+    let dx = 0, dy = 0;
+    const cos = Math.cos(player.dir);
+    const sin = Math.sin(player.dir);
+
+    if (keys['w'] || keys['arrowup']) { dx += cos * moveStep; dy += sin * moveStep; }
+    if (keys['s'] || keys['arrowdown']) { dx -= cos * moveStep; dy -= sin * moveStep; }
+    if (keys['d']) { dx += -sin * moveStep; dy += cos * moveStep; }
+    if (keys['a']) { dx += sin * moveStep; dy += -cos * moveStep; }
+
+    const newX = player.x + dx;
+    const newY = player.y + dy;
+
+    if (!isWall(newX, player.y)) player.x = newX;
+    if (!isWall(player.x, newY)) player.y = newY;
+  }
+
+  function castRays() {
+    const numRays = W;
+    const hits = new Array(numRays);
+    const halfFov = player.fov * 0.5;
+    const planeDist = (W * 0.5) / Math.tan(halfFov);
+
+    for (let x = 0; x < numRays; x++) {
+      const cameraX = 2 * x / numRays - 1; // -1 to 1
+      const rayDir = {
+        x: Math.cos(player.dir + Math.atan(cameraX * Math.tan(halfFov))),
+        y: Math.sin(player.dir + Math.atan(cameraX * Math.tan(halfFov)))
+      };
+
+      let mapX = Math.floor(player.x);
+      let mapY = Math.floor(player.y);
+
+      const deltaDistX = Math.abs(1 / rayDir.x);
+      const deltaDistY = Math.abs(1 / rayDir.y);
+
+      let stepX, stepY;
+      let sideDistX, sideDistY;
+
+      if (rayDir.x < 0) {
+        stepX = -1;
+        sideDistX = (player.x - mapX) * deltaDistX;
+      } else {
+        stepX = 1;
+        sideDistX = (mapX + 1.0 - player.x) * deltaDistX;
+      }
+      if (rayDir.y < 0) {
+        stepY = -1;
+        sideDistY = (player.y - mapY) * deltaDistY;
+      } else {
+        stepY = 1;
+        sideDistY = (mapY + 1.0 - player.y) * deltaDistY;
+      }
+
+      let hit = 0, side = 0;
+      while (!hit) {
+        if (sideDistX < sideDistY) {
+          sideDistX += deltaDistX;
+          mapX += stepX;
+          side = 0;
+        } else {
+          sideDistY += deltaDistY;
+          mapY += stepY;
+          side = 1;
+        }
+        if (mapX < 0 || mapY < 0 || mapX >= mapW || mapY >= mapH) {
+          hit = 1;
+          break;
+        }
+        if (map[mapY * mapW + mapX] === 1) hit = 1;
+      }
+
+      let perpWallDist;
+      if (side === 0) {
+        perpWallDist = (mapX - player.x + (1 - stepX) * 0.5) / rayDir.x;
+      } else {
+        perpWallDist = (mapY - player.y + (1 - stepY) * 0.5) / rayDir.y;
+      }
+      hits[x] = { dist: perpWallDist, side, mapX, mapY, rayDir };
+    }
+    return hits;
+  }
+
+  function shadeColor(base, factor) {
+    const r = Math.floor(((base >> 16) & 255) * factor);
+    const g = Math.floor(((base >> 8) & 255) * factor);
+    const b = Math.floor((base & 255) * factor);
+    return `rgb(${r},${g},${b})`;
+  }
+
+  function render3D() {
+    // Sky
+    const skyGrad = ctx.createLinearGradient(0, 0, 0, H * 0.5);
+    skyGrad.addColorStop(0, '#3a4a70');
+    skyGrad.addColorStop(1, '#1e2435');
+    ctx.fillStyle = skyGrad;
+    ctx.fillRect(0, 0, W, H * 0.5);
+
+    // Floor
+    const floorGrad = ctx.createLinearGradient(0, H * 0.5, 0, H);
+    floorGrad.addColorStop(0, '#2a2a2a');
+    floorGrad.addColorStop(1, '#050505');
+    ctx.fillStyle = floorGrad;
+    ctx.fillRect(0, H * 0.5, W, H * 0.5);
+
+    const hits = castRays();
+    for (let x = 0; x < W; x++) {
+      const h = hits[x];
+      const dist = Math.max(h.dist, 0.0001);
+      const lineH = Math.floor((H / dist));
+      let start = -lineH / 2 + H / 2;
+      let end = lineH / 2 + H / 2;
+      if (start < 0) start = 0;
+      if (end >= H) end = H - 1;
+
+      const baseColor = 0x87c38f;
+      const shade = h.side ? 0.6 : 0.8;
+      ctx.strokeStyle = shadeColor(baseColor, shade / (1 + dist * 0.08));
+      ctx.beginPath();
+      ctx.moveTo(x + 0.5, start);
+      ctx.lineTo(x + 0.5, end);
+      ctx.stroke();
+    }
+
+    if (showMini) drawMiniMap();
+  }
+
+  function drawMiniMap() {
+    const scale = 8;
+    const w = mapW * scale;
+    const h = mapH * scale;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(10, 10, w + 4, h + 4);
+    for (let y = 0; y < mapH; y++) {
+      for (let x = 0; x < mapW; x++) {
+        ctx.fillStyle = map[y * mapW + x] ? '#666' : '#222';
+        ctx.fillRect(12 + x * scale, 12 + y * scale, scale - 1, scale - 1);
+      }
+    }
+    // Player
+    ctx.fillStyle = '#0f0';
+    ctx.beginPath();
+    ctx.arc(12 + player.x * scale, 12 + player.y * scale, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#0f0';
+    ctx.beginPath();
+    ctx.moveTo(12 + player.x * scale, 12 + player.y * scale);
+    ctx.lineTo(12 + (player.x + Math.cos(player.dir) * 0.8) * scale, 12 + (player.y + Math.sin(player.dir) * 0.8) * scale);
+    ctx.stroke();
+  }
+
+  function renderEditor() {
+    ctx.fillStyle = '#111';
+    ctx.fillRect(0, 0, W, H);
+    const cellSize = Math.floor(Math.min(W / mapW, H / mapH));
+    for (let y = 0; y < mapH; y++) {
+      for (let x = 0; x < mapW; x++) {
+        ctx.fillStyle = map[y * mapW + x] ? '#555' : '#1c1c1c';
+        ctx.fillRect(x * cellSize, y * cellSize, cellSize - 1, cellSize - 1);
+      }
+    }
+    // Grid lines
+    ctx.strokeStyle = '#222';
+    ctx.lineWidth = 1;
+    for (let x = 0; x <= mapW; x++) {
+      ctx.beginPath();
+      ctx.moveTo(x * cellSize + 0.5, 0);
+      ctx.lineTo(x * cellSize + 0.5, mapH * cellSize);
+      ctx.stroke();
+    }
+    for (let y = 0; y <= mapH; y++) {
+      ctx.beginPath();
+      ctx.moveTo(0, y * cellSize + 0.5);
+      ctx.lineTo(mapW * cellSize, y * cellSize + 0.5);
+      ctx.stroke();
+    }
+    // Player marker
+    ctx.fillStyle = '#0f0';
+    ctx.beginPath();
+    ctx.arc(player.x * cellSize, player.y * cellSize, cellSize * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#0f0';
+    ctx.beginPath();
+    ctx.moveTo(player.x * cellSize, player.y * cellSize);
+    ctx.lineTo((player.x + Math.cos(player.dir) * 0.8) * cellSize, (player.y + Math.sin(player.dir) * 0.8) * cellSize);
+    ctx.stroke();
+
+    ctx.fillStyle = '#ccc';
+    ctx.fillText('Left click: toggle wall | Right click: erase | Brush: ' + (brush ? 'Wall' : 'Empty'), 10, H - 20);
+  }
+
+  function update() {
+    const now = performance.now();
+    const dt = Math.min((now - lastTime) / 1000, 0.033);
+    lastTime = now;
+
+    if (mode === 'play') {
+      movePlayer(dt);
+      render3D();
+    } else {
+      renderEditor();
+    }
+
+    requestAnimationFrame(update);
+  }
+
+  update();
+})();
+</script>
+</body>
+</html>
+```
