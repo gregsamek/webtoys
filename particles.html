@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Particle System Editor (No Dependencies)</title>
+<style>
+  :root { font-family: "Segoe UI", Roboto, Arial, sans-serif; color: #eaeaea; background: #121212; }
+  body { margin: 0; display: grid; grid-template-columns: 320px 1fr; height: 100vh; }
+  #controls { padding: 12px; overflow-y: auto; background: #1b1b1b; border-right: 1px solid #2a2a2a; }
+  #controls h2, h3 { margin: 0.4em 0 0.3em; font-weight: 600; }
+  #controls label { font-size: 12px; opacity: 0.85; display: inline-block; margin-bottom: 2px; }
+  #controls input, #controls select { width: 100%; margin-bottom: 10px; padding: 6px; border: 1px solid #333; border-radius: 4px; background: #101010; color: #eaeaea; }
+  #controls input[type="color"] { padding: 0; height: 34px; }
+  #controls input[type="range"] { padding: 0; }
+  #controls .row { display: flex; gap: 8px; }
+  #controls .row > div { flex: 1; }
+  button { background: #2f6feb; color: white; border: none; border-radius: 4px; padding: 8px 10px; cursor: pointer; margin-right: 6px; }
+  button.secondary { background: #444; }
+  button:active { transform: translateY(1px); }
+  #canvasWrap { position: relative; }
+  #canvas { width: 100%; height: 100vh; display: block; background: #050505; }
+  #hint { position: absolute; top: 8px; right: 12px; padding: 6px 10px; background: rgba(0,0,0,0.55); border-radius: 4px; font-size: 12px; color: #ddd; }
+  small { opacity: 0.7; }
+</style>
+</head>
+<body>
+  <div id="controls">
+    <h2>Particle System</h2>
+    <div class="row">
+      <div>
+        <label>Emission rate (per sec)</label>
+        <input id="emitRate" type="range" min="0" max="2000" step="10" value="400">
+      </div>
+      <div>
+        <label>Max particles</label>
+        <input id="maxParticles" type="number" min="10" max="5000" step="10" value="1000">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Lifetime (s)</label>
+        <input id="life" type="range" min="0.1" max="8" step="0.05" value="2">
+      </div>
+      <div>
+        <label>Lifetime randomness (%)</label>
+        <input id="lifeRand" type="range" min="0" max="100" step="5" value="10">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Speed (px/s)</label>
+        <input id="speed" type="range" min="0" max="1000" step="10" value="220">
+      </div>
+      <div>
+        <label>Speed randomness (%)</label>
+        <input id="speedRand" type="range" min="0" max="100" step="5" value="20">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Angle (deg)</label>
+        <input id="angle" type="range" min="0" max="360" step="1" value="270">
+      </div>
+      <div>
+        <label>Spread (deg)</label>
+        <input id="spread" type="range" min="0" max="180" step="1" value="40">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Gravity X (px/s²)</label>
+        <input id="gravX" type="range" min="-1000" max="1000" step="10" value="0">
+      </div>
+      <div>
+        <label>Gravity Y (px/s²)</label>
+        <input id="gravY" type="range" min="-1000" max="1000" step="10" value="350">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Start size (px)</label>
+        <input id="sizeStart" type="range" min="0" max="200" step="1" value="30">
+      </div>
+      <div>
+        <label>End size (px)</label>
+        <input id="sizeEnd" type="range" min="0" max="200" step="1" value="0">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Start opacity</label>
+        <input id="alphaStart" type="range" min="0" max="1" step="0.01" value="1">
+      </div>
+      <div>
+        <label>End opacity</label>
+        <input id="alphaEnd" type="range" min="0" max="1" step="0.01" value="0">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Start color</label>
+        <input id="colorStart" type="color" value="#ffb347">
+      </div>
+      <div>
+        <label>End color</label>
+        <input id="colorEnd" type="color" value="#ff3b3b">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Spin (deg/s)</label>
+        <input id="spin" type="range" min="-720" max="720" step="10" value="0">
+      </div>
+      <div>
+        <label>Spin randomness (%)</label>
+        <input id="spinRand" type="range" min="0" max="200" step="5" value="20">
+      </div>
+    </div>
+
+    <div class="row">
+      <div>
+        <label>Blend mode</label>
+        <select id="blend">
+          <option value="source-over">Normal</option>
+          <option value="lighter">Additive</option>
+          <option value="screen">Screen</option>
+          <option value="multiply">Multiply</option>
+        </select>
+      </div>
+      <div>
+        <label>Background</label>
+        <input id="bg" type="color" value="#050505">
+      </div>
+    </div>
+
+    <h3>Sprite</h3>
+    <input id="sprite" type="file" accept="image/*">
+    <small>Fallback: simple circle</small>
+
+    <h3>Controls</h3>
+    <div style="margin-bottom:10px;">
+      <button id="toggle">Pause</button>
+      <button id="clear" class="secondary">Clear</button>
+      <button id="reset" class="secondary">Reset</button>
+    </div>
+    <small>Tip: Click on the canvas to move the emitter.</small>
+  </div>
+
+  <div id="canvasWrap">
+    <canvas id="canvas"></canvas>
+    <div id="hint">Click to move emitter • Drag to reposition</div>
+  </div>
+
+<script>
+(() => {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  let w, h;
+  const resize = () => {
+    w = canvas.width = canvas.clientWidth;
+    h = canvas.height = canvas.clientHeight;
+  };
+  window.addEventListener('resize', resize);
+  resize();
+
+  const controls = [
+    "emitRate","maxParticles","life","lifeRand","speed","speedRand","angle","spread",
+    "gravX","gravY","sizeStart","sizeEnd","alphaStart","alphaEnd","colorStart","colorEnd",
+    "spin","spinRand","blend","bg"
+  ].reduce((o,id)=> (o[id]=document.getElementById(id), o), {});
+
+  let running = true;
+  document.getElementById('toggle').onclick = () => { running = !running; toggleBtn.textContent = running ? "Pause" : "Play"; };
+  const toggleBtn = document.getElementById('toggle');
+  document.getElementById('clear').onclick = () => particles.length = 0;
+  document.getElementById('reset').onclick = () => { setDefaults(); };
+  const emitter = { x: w*0.5, y: h*0.5 };
+
+  let spriteImg = null;
+  const spriteInput = document.getElementById('sprite');
+  spriteInput.addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      const img = new Image();
+      img.onload = () => { spriteImg = img; };
+      img.src = evt.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  canvas.addEventListener('pointerdown', e => {
+    const rect = canvas.getBoundingClientRect();
+    emitter.x = e.clientX - rect.left;
+    emitter.y = e.clientY - rect.top;
+    dragging = true;
+  });
+  let dragging = false;
+  canvas.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    const rect = canvas.getBoundingClientRect();
+    emitter.x = e.clientX - rect.left;
+    emitter.y = e.clientY - rect.top;
+  });
+  canvas.addEventListener('pointerup', () => dragging = false);
+  canvas.addEventListener('pointerleave', () => dragging = false);
+
+  const particles = [];
+  let lastTime = performance.now();
+  let emitAcc = 0;
+
+  function lerp(a,b,t){ return a + (b-a)*t; }
+  function hexToRgb(hex){
+    const n = parseInt(hex.slice(1), 16);
+    return { r:(n>>16)&255, g:(n>>8)&255, b:n&255 };
+  }
+
+  function newParticle(cfg) {
+    const life = cfg.life * (1 - (Math.random()*2-1) * cfg.lifeRand);
+    const speed = cfg.speed * (1 - (Math.random()*2-1) * cfg.speedRand);
+    const ang = (cfg.angle + (Math.random()*2-1)*cfg.spread) * Math.PI/180;
+    const spin = cfg.spin * (1 - (Math.random()*2-1) * cfg.spinRand);
+
+    return {
+      x: emitter.x,
+      y: emitter.y,
+      vx: Math.cos(ang) * speed,
+      vy: Math.sin(ang) * speed,
+      life,
+      age: 0,
+      size0: cfg.sizeStart,
+      size1: cfg.sizeEnd,
+      a0: cfg.alphaStart,
+      a1: cfg.alphaEnd,
+      c0: cfg.c0,
+      c1: cfg.c1,
+      rot: 0,
+      spin
+    };
+  }
+
+  function setDefaults() {
+    controls.emitRate.value = 400;
+    controls.maxParticles.value = 1000;
+    controls.life.value = 2;
+    controls.lifeRand.value = 10;
+    controls.speed.value = 220;
+    controls.speedRand.value = 20;
+    controls.angle.value = 270;
+    controls.spread.value = 40;
+    controls.gravX.value = 0;
+    controls.gravY.value = 350;
+    controls.sizeStart.value = 30;
+    controls.sizeEnd.value = 0;
+    controls.alphaStart.value = 1;
+    controls.alphaEnd.value = 0;
+    controls.colorStart.value = "#ffb347";
+    controls.colorEnd.value = "#ff3b3b";
+    controls.spin.value = 0;
+    controls.spinRand.value = 20;
+    controls.blend.value = "source-over";
+    controls.bg.value = "#050505";
+  }
+  setDefaults();
+
+  function getConfig() {
+    return {
+      emitRate: +controls.emitRate.value,
+      maxParticles: +controls.maxParticles.value,
+      life: +controls.life.value,
+      lifeRand: +controls.lifeRand.value / 100,
+      speed: +controls.speed.value,
+      speedRand: +controls.speedRand.value / 100,
+      angle: +controls.angle.value,
+      spread: +controls.spread.value * 0.5,
+      gravX: +controls.gravX.value,
+      gravY: +controls.gravY.value,
+      sizeStart: +controls.sizeStart.value,
+      sizeEnd: +controls.sizeEnd.value,
+      alphaStart: +controls.alphaStart.value,
+      alphaEnd: +controls.alphaEnd.value,
+      c0: hexToRgb(controls.colorStart.value),
+      c1: hexToRgb(controls.colorEnd.value),
+      spin: +controls.spin.value * Math.PI/180,
+      spinRand: +controls.spinRand.value / 100,
+      blend: controls.blend.value,
+      bg: controls.bg.value
+    };
+  }
+
+  function drawParticle(p, cfg, dt) {
+    p.age += dt;
+    if (p.age > p.life) return false;
+
+    p.vx += cfg.gravX * dt;
+    p.vy += cfg.gravY * dt;
+    p.x  += p.vx * dt;
+    p.y  += p.vy * dt;
+    p.rot += p.spin * dt;
+
+    const t = p.age / p.life;
+    const size = lerp(p.size0, p.size1, t);
+    const alpha = lerp(p.a0, p.a1, t);
+    const r = lerp(p.c0.r, p.c1.r, t);
+    const g = lerp(p.c0.g, p.c1.g, t);
+    const b = lerp(p.c0.b, p.c1.b, t);
+
+    ctx.globalAlpha = alpha;
+    ctx.translate(p.x, p.y);
+    ctx.rotate(p.rot);
+    ctx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
+    ctx.strokeStyle = ctx.fillStyle;
+
+    if (spriteImg) {
+      const hw = size*0.5;
+      ctx.drawImage(spriteImg, -hw, -hw, size, size);
+    } else {
+      ctx.beginPath();
+      ctx.arc(0,0,size*0.5,0,Math.PI*2);
+      ctx.fill();
+    }
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.globalAlpha = 1;
+    return true;
+  }
+
+  function loop(now) {
+    const dt = Math.min((now - lastTime) / 1000, 0.05);
+    lastTime = now;
+    const cfg = getConfig();
+
+    if (running) {
+      emitAcc += cfg.emitRate * dt;
+      const toEmit = Math.floor(emitAcc);
+      emitAcc -= toEmit;
+      for (let i = 0; i < toEmit; i++) {
+        if (particles.length < cfg.maxParticles) particles.push(newParticle(cfg));
+      }
+    }
+
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = cfg.bg;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalCompositeOperation = cfg.blend;
+
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const alive = drawParticle(particles[i], cfg, dt);
+      if (!alive) particles.splice(i,1);
+    }
+
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
