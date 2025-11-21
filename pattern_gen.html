@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>SVG Pattern Generator</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #0b1117;
+    --panel: rgba(255,255,255,0.04);
+    --accent: #66c2ff;
+    --text: #e8f0ff;
+    --muted: #9fb3c8;
+    --border: rgba(255,255,255,0.08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: radial-gradient(circle at 20% 20%, rgba(102,194,255,0.08), transparent 35%),
+                radial-gradient(circle at 80% 10%, rgba(255,137,102,0.08), transparent 30%),
+                var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 360px 1fr;
+  }
+  aside {
+    border-right: 1px solid var(--border);
+    padding: 20px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(0,0,0,0.05));
+    backdrop-filter: blur(6px);
+  }
+  main {
+    padding: 20px;
+    display: grid;
+    gap: 16px;
+    grid-template-rows: auto 1fr auto;
+  }
+  h1 { margin: 0 0 12px; font-size: 22px; letter-spacing: 0.4px; }
+  fieldset {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 12px 14px 10px;
+    margin-bottom: 12px;
+    background: var(--panel);
+  }
+  legend {
+    padding: 0 6px;
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 0.3px;
+  }
+  label {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    align-items: center;
+    gap: 8px;
+    margin: 8px 0;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  input[type="number"],
+  input[type="text"],
+  select {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.04);
+    color: var(--text);
+    font-size: 14px;
+  }
+  input[type="color"] {
+    width: 100%;
+    height: 36px;
+    padding: 0;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent;
+  }
+  .row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 6px;
+  }
+  button {
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    border-radius: 10px;
+    padding: 9px 12px;
+    cursor: pointer;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    transition: all 0.15s ease;
+  }
+  button:hover { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(102,194,255,0.15); }
+  button.primary { background: linear-gradient(135deg, #66c2ff, #ff8966); border: none; color: #0b1117; }
+  .preview-wrapper {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    background: #111722;
+    min-height: 360px;
+    position: relative;
+  }
+  .preview {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  textarea {
+    width: 100%;
+    min-height: 140px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.03);
+    color: var(--text);
+    padding: 10px;
+    font-family: "JetBrains Mono", "SFMono-Regular", Consolas, Menlo, monospace;
+    font-size: 12px;
+    resize: vertical;
+  }
+  .code-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .pill {
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.08);
+    color: var(--accent);
+    font-weight: 700;
+    font-size: 12px;
+  }
+  .footer {
+    color: var(--muted);
+    font-size: 12px;
+    text-align: right;
+  }
+</style>
+</head>
+<body>
+  <aside>
+    <h1>SVG Pattern Generator</h1>
+    <fieldset>
+      <legend>Pattern</legend>
+      <label>
+        Type
+        <select id="patternType">
+          <option value="stripes">Stripes</option>
+          <option value="grid">Grid</option>
+          <option value="dots">Dots</option>
+          <option value="triangles">Triangles</option>
+          <option value="hexagons">Hexagons</option>
+          <option value="waves">Waves</option>
+        </select>
+      </label>
+      <label>
+        Cell size (px)
+        <input type="number" id="size" min="4" max="400" value="80">
+      </label>
+      <label>
+        Stroke width (px)
+        <input type="number" id="stroke" min="0" max="40" value="2">
+      </label>
+      <label>
+        Opacity (0-1)
+        <input type="number" step="0.05" id="opacity" min="0" max="1" value="1">
+      </label>
+      <label>
+        Rotation (deg)
+        <input type="number" id="rotation" min="0" max="360" value="0">
+      </label>
+    </fieldset>
+    <fieldset>
+      <legend>Colors</legend>
+      <div class="row">
+        <label>Background <input type="color" id="bg" value="#0b1117"></label>
+        <label>Primary <input type="color" id="c1" value="#66c2ff"></label>
+      </div>
+      <div class="row">
+        <label>Secondary <input type="color" id="c2" value="#ff8966"></label>
+        <label>Accent <input type="color" id="c3" value="#7c6fff"></label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Randomness</legend>
+      <label>
+        Seed (optional)
+        <input type="text" id="seed" placeholder="e.g. galaxy-42">
+      </label>
+      <div class="buttons">
+        <button id="randomize">Randomize</button>
+        <button id="shuffleColors">Shuffle colors</button>
+      </div>
+    </fieldset>
+    <div class="buttons">
+      <button class="primary" id="update">Update Preview</button>
+      <button id="download">Download SVG</button>
+      <button id="copy">Copy Code</button>
+    </div>
+  </aside>
+
+  <main>
+    <div class="preview-wrapper">
+      <svg id="preview" class="preview" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pattern preview"></svg>
+    </div>
+    <div>
+      <div class="code-header">
+        <span>Generated SVG</span><span class="pill" id="pillInfo"></span>
+      </div>
+      <textarea id="code" spellcheck="false"></textarea>
+    </div>
+    <div class="footer">All client-side · No dependencies · SVG is tileable and repeatable.</div>
+  </main>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const controls = {
+    type: $("patternType"),
+    size: $("size"),
+    stroke: $("stroke"),
+    opacity: $("opacity"),
+    rotation: $("rotation"),
+    bg: $("bg"),
+    c1: $("c1"),
+    c2: $("c2"),
+    c3: $("c3"),
+    seed: $("seed"),
+  };
+  const preview = $("preview");
+  const code = $("code");
+  const pill = $("pillInfo");
+
+  // Simple deterministic PRNG
+  function createRng(seed) {
+    let h = 1779033703 ^ seed.length;
+    for (let i = 0; i < seed.length; i++) {
+      h = Math.imul(h ^ seed.charCodeAt(i), 3432918353);
+      h = (h << 13) | (h >>> 19);
+    }
+    return () => {
+      h = Math.imul(h ^ (h >>> 16), 2246822507);
+      h = Math.imul(h ^ (h >>> 13), 3266489909);
+      const t = (h ^= h >>> 16) >>> 0;
+      return t / 4294967295;
+    };
+  }
+
+  function hsl(rand, s=70, l=55) {
+    const h = Math.round(rand()*360);
+    return `hsl(${h} ${s}% ${l}%)`;
+  }
+
+  function randomizeFields() {
+    const seed = Math.random().toString(36).slice(2);
+    controls.seed.value = seed;
+    const rng = createRng(seed);
+    controls.type.value = ["stripes","grid","dots","triangles","hexagons","waves"][Math.floor(rng()*6)];
+    controls.size.value = Math.floor(rng()*120)+24;
+    controls.stroke.value = Math.floor(rng()*6)+1;
+    controls.opacity.value = (Math.round(rng()*7)+3)/10;
+    controls.rotation.value = Math.floor(rng()*360);
+    controls.bg.value = rgbToHex(hslToRgb(hsl(rng,35,8)));
+    controls.c1.value = rgbToHex(hslToRgb(hsl(rng)));
+    controls.c2.value = rgbToHex(hslToRgb(hsl(rng)));
+    controls.c3.value = rgbToHex(hslToRgb(hsl(rng)));
+  }
+
+  function shuffleColors() {
+    const seed = controls.seed.value || Math.random().toString(36).slice(2);
+    controls.seed.value = seed;
+    const rng = createRng(seed + "-colors");
+    controls.bg.value = rgbToHex(hslToRgb(hsl(rng,35,8)));
+    controls.c1.value = rgbToHex(hslToRgb(hsl(rng)));
+    controls.c2.value = rgbToHex(hslToRgb(hsl(rng)));
+    controls.c3.value = rgbToHex(hslToRgb(hsl(rng)));
+  }
+
+  function hexagons(size, stroke, colors, opacity) {
+    const w = size;
+    const h = Math.sqrt(3)/2 * w;
+    const path = [];
+    const c = colors[0];
+    path.push(`<pattern id="p" width="${w}" height="${h}" patternUnits="userSpaceOnUse">`);
+    path.push(`<rect width="${w}" height="${h}" fill="${colors[3]}" />`);
+    path.push(`<g stroke="${c}" stroke-width="${stroke}" stroke-opacity="${opacity}" fill="none">`);
+    path.push(`<path d="M ${w*0.25} 0 L ${w*0.75} 0 L ${w} ${h/2} L ${w*0.75} ${h} L ${w*0.25} ${h} L 0 ${h/2} Z" />`);
+    path.push(`<path d="M ${-w*0.25} 0 L ${w*0.25} 0 L ${w*0.5} ${h/2} L ${w*0.25} ${h} L ${-w*0.25} ${h} L ${-w*0.5} ${h/2} Z" />`);
+    path.push(`</g></pattern>`);
+    return { width:w, height:h, content:path.join("") };
+  }
+
+  function stripes(size, stroke, colors, opacity) {
+    const path = [];
+    path.push(`<pattern id="p" width="${size}" height="${size}" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">`);
+    path.push(`<rect width="${size}" height="${size}" fill="${colors[3]}"/>`);
+    path.push(`<rect width="${size/2}" height="${size}" fill="${colors[0]}" fill-opacity="${opacity}"/>`);
+    path.push(`</pattern>`);
+    return { width:size, height:size, content:path.join("") };
+  }
+
+  function grid(size, stroke, colors, opacity) {
+    const path = [];
+    path.push(`<pattern id="p" width="${size}" height="${size}" patternUnits="userSpaceOnUse">`);
+    path.push(`<rect width="${size}" height="${size}" fill="${colors[3]}"/>`);
+    path.push(`<path d="M ${size} 0 H 0 V ${size}" fill="none" stroke="${colors[0]}" stroke-width="${stroke}" stroke-opacity="${opacity}" />`);
+    path.push(`<path d="M 0 ${size/2} H ${size} M ${size/2} 0 V ${size}" stroke="${colors[1]}" stroke-width="${stroke}" stroke-opacity="${opacity*0.8}" />`);
+    path.push(`</pattern>`);
+    return { width:size, height:size, content:path.join("") };
+  }
+
+  function dots(size, stroke, colors, opacity) {
+    const r = Math.max(1, stroke*1.2);
+    const path = [];
+    path.push(`<pattern id="p" width="${size}" height="${size}" patternUnits="userSpaceOnUse">`);
+    path.push(`<rect width="${size}" height="${size}" fill="${colors[3]}"/>`);
+    path.push(`<circle cx="${size/2}" cy="${size/2}" r="${r}" fill="${colors[0]}" fill-opacity="${opacity}" />`);
+    path.push(`</pattern>`);
+    return { width:size, height:size, content:path.join("") };
+  }
+
+  function triangles(size, stroke, colors, opacity) {
+    const h = size * Math.sqrt(3)/2;
+    const path = [];
+    path.push(`<pattern id="p" width="${size}" height="${h}" patternUnits="userSpaceOnUse">`);
+    path.push(`<rect width="${size}" height="${h}" fill="${colors[3]}"/>`);
+    path.push(`<g stroke-width="${stroke}" stroke-opacity="${opacity}" fill="none">`);
+    path.push(`<path d="M0 ${h} L ${size/2} 0 L ${size} ${h} Z" stroke="${colors[0]}" />`);
+    path.push(`<path d="M0 ${h/2} L ${size/2} ${h*1.5} M ${size/2} ${h/2} L ${size} ${h/2} M ${size/2} 0 V ${h}" stroke="${colors[1]}" stroke-opacity="${opacity*0.7}"/>`);
+    path.push(`</g>`);
+    path.push(`</pattern>`);
+    return { width:size, height:h, content:path.join("") };
+  }
+
+  function waves(size, stroke, colors, opacity) {
+    const amp = size / 4;
+    const path = [];
+    path.push(`<pattern id="p" width="${size}" height="${size/2}" patternUnits="userSpaceOnUse">`);
+    path.push(`<rect width="${size}" height="${size/2}" fill="${colors[3]}"/>`);
+    path.push(`<path d="M0 ${size/4} C ${size/4} ${size/2} ${size*3/4} 0 ${size} ${size/4}" fill="none" stroke="${colors[0]}" stroke-width="${stroke}" stroke-linecap="round" stroke-opacity="${opacity}" />`);
+    path.push(`<path d="M0 0 C ${size/4} ${size/4} ${size*3/4} ${-size/4} ${size} 0" fill="none" stroke="${colors[1]}" stroke-width="${stroke}" stroke-linecap="round" stroke-opacity="${opacity*0.6}" />`);
+    path.push(`</pattern>`);
+    return { width:size, height:size/2, content:path.join("") };
+  }
+
+  const generators = { stripes, grid, dots, triangles, hexagons, waves };
+
+  function generateSVG(opts) {
+    const { type, size, stroke, opacity, rotation, colors } = opts;
+    const gen = generators[type];
+    const p = gen(size, stroke, colors, opacity);
+    const viewW = Math.max(360, size*3);
+    const viewH = Math.max(300, p.height*3);
+    const rot = rotation ? ` patternTransform="rotate(${rotation})"` : "";
+    const content = p.content.replace('id="p"', `id="p"${rot}`);
+    const svg = [
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${viewW}" height="${viewH}" viewBox="0 0 ${viewW} ${viewH}">`,
+      content,
+      `<rect width="100%" height="100%" fill="url(#p)" />`,
+      `</svg>`
+    ].join("");
+    return { svg, width:viewW, height:viewH };
+  }
+
+  function update() {
+    const opts = {
+      type: controls.type.value,
+      size: clamp(parseFloat(controls.size.value) || 40, 4, 400),
+      stroke: clamp(parseFloat(controls.stroke.value) || 2, 0, 40),
+      opacity: clamp(parseFloat(controls.opacity.value) || 1, 0, 1),
+      rotation: clamp(parseFloat(controls.rotation.value) || 0, 0, 360),
+      colors: [controls.c1.value, controls.c2.value, controls.c3.value, controls.bg.value],
+    };
+    const { svg, width, height } = generateSVG(opts);
+    preview.setAttribute("width", "100%");
+    preview.setAttribute("height", "100%");
+    preview.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    preview.innerHTML = svg.slice(svg.indexOf("<pattern")); // keep defs and rect
+    code.value = svg;
+    pill.textContent = `${opts.type} • ${Math.round(opts.size)}px`;
+  }
+
+  function clamp(v, a, b) { return Math.min(Math.max(v, a), b); }
+
+  function copyCode() {
+    navigator.clipboard.writeText(code.value).then(() => {
+      flash("Copied!");
+    });
+  }
+
+  function download() {
+    const blob = new Blob([code.value], { type: "image/svg+xml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pattern-${controls.type.value}.svg`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function flash(txt) {
+    pill.textContent = txt;
+    setTimeout(() => pill.textContent = `${controls.type.value} • ${Math.round(clamp(parseFloat(controls.size.value)||0,4,400))}px`, 900);
+  }
+
+  function rgbToHex([r,g,b]) {
+    return "#" + [r,g,b].map(x => x.toString(16).padStart(2,"0")).join("");
+  }
+  function hslToRgb(hslStr) {
+    const [h, s, l] = hslStr.match(/[\d.]+/g).map(Number);
+    const S = s/100, L = l/100;
+    const C = (1 - Math.abs(2*L - 1)) * S;
+    const X = C * (1 - Math.abs((h/60)%2 - 1));
+    const m = L - C/2;
+    let [r,g,b] = [0,0,0];
+    if (0<=h && h<60) [r,g,b] = [C,X,0];
+    else if (60<=h && h<120) [r,g,b] = [X,C,0];
+    else if (120<=h && h<180) [r,g,b] = [0,C,X];
+    else if (180<=h && h<240) [r,g,b] = [0,X,C];
+    else if (240<=h && h<300) [r,g,b] = [X,0,C];
+    else if (300<=h && h<360) [r,g,b] = [C,0,X];
+    return [r+ m, g+ m, b+ m].map(v => Math.round(v*255));
+  }
+
+  // Events
+  $("update").addEventListener("click", update);
+  $("randomize").addEventListener("click", () => { randomizeFields(); update(); });
+  $("shuffleColors").addEventListener("click", () => { shuffleColors(); update(); });
+  $("copy").addEventListener("click", copyCode);
+  $("download").addEventListener("click", download);
+  Object.values(controls).forEach(el => el.addEventListener("change", update));
+
+  // Init
+  randomizeFields();
+  update();
+})();
+</script>
+</body>
+</html>
