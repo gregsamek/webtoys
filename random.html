@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Random Number Lab</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; margin: 0; padding: 1rem 1.5rem 2rem; background: #f6f7fb; color: #222; }
+  h1 { margin-top: 0; }
+  .panel { background: white; border-radius: 10px; padding: 1rem 1.25rem; box-shadow: 0 6px 18px rgba(0,0,0,0.08); margin-bottom: 1rem; }
+
+    label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    align-items: flex-start;
+    margin: 0.35rem 0;
+    }
+
+    input, select, textarea, button {
+    font: inherit;
+    padding: 0.4rem 0.55rem;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    width: 100%;
+    box-sizing: border-box;
+    }
+
+    textarea {
+    min-height: 120px;
+    resize: vertical;
+    }
+  button { cursor: pointer; border: none; background: #4b7bec; color: white; }
+  button.secondary { background: #eee; color: #222; border: 1px solid #ccc; }
+  button:disabled { opacity: 0.6; cursor: not-allowed; }
+  .row { display: flex; flex-wrap: wrap; gap: 1rem; }
+  .row > div { min-width: 180px; flex: 1; }
+  #results { white-space: pre-wrap; word-break: break-word; }
+  #histogram { width: 100%; height: 260px; background: #fafafa; border: 1px solid #ddd; border-radius: 8px; }
+  .note { color: #555; font-size: 0.95rem; }
+  table { border-collapse: collapse; width: 100%; }
+  th, td { padding: 0.35rem 0.5rem; text-align: left; border-bottom: 1px solid #eee; }
+  code { background: #eef; padding: 0.1rem 0.25rem; border-radius: 4px; }
+</style>
+</head>
+<body>
+<h1>Random Number Lab</h1>
+
+<div class="panel">
+  <div class="row">
+    <div>
+      <label>
+        Distribution
+        <select id="distribution"></select>
+      </label>
+    </div>
+    <div>
+      <label>
+        Sample count
+        <input type="number" id="count" value="50" min="1" max="10000" step="1">
+      </label>
+    </div>
+    <div>
+      <label>
+        Allow replacement
+        <input type="checkbox" id="replacement" checked>
+      </label>
+      <div class="note" id="replacement-note" style="display:none;">Not supported for this distribution.</div>
+    </div>
+    <div>
+      <label>
+        Seed (optional)
+        <input type="text" id="seed" placeholder="random if empty">
+      </label>
+    </div>
+    <div>
+      <label>
+        Decimals
+        <input type="number" id="decimals" value="4" min="0" max="12">
+      </label>
+    </div>
+  </div>
+
+  <div id="param-fields" class="row" style="margin-top:0.5rem;"></div>
+
+  <div style="margin-top:0.75rem; display:flex; gap:0.5rem; flex-wrap:wrap;">
+    <button id="generate">Generate</button>
+    <button id="reset" class="secondary">Reset</button>
+    <button id="copy" class="secondary">Copy</button>
+    <button id="download" class="secondary">Download CSV</button>
+  </div>
+</div>
+
+<div class="panel">
+  <h3>Summary</h3>
+  <div id="summary" class="note">Run a generation to see summary stats.</div>
+</div>
+
+<div class="panel">
+  <h3>Histogram / Frequencies</h3>
+  <canvas id="histogram"></canvas>
+</div>
+
+<div class="panel">
+  <h3>Generated Values</h3>
+  <div id="results" class="note">No values yet.</div>
+</div>
+
+<script>
+(() => {
+  // --- Distributions definition ---
+  const distributions = {
+    uniformInt: {
+      label: 'Uniform (integer, inclusive)',
+      supportsUnique: true,
+      params: [
+        { id: 'min', label: 'Min', type: 'number', value: 1, step: 1 },
+        { id: 'max', label: 'Max', type: 'number', value: 100, step: 1 }
+      ],
+      sample: (rng, p) => {
+        const min = Number(p.min), max = Number(p.max);
+        return min + Math.floor(rng.next() * (max - min + 1));
+      },
+      validate: p => Number(p.max) >= Number(p.min)
+    },
+    uniformFloat: {
+      label: 'Uniform (float)',
+      supportsUnique: false,
+      params: [
+        { id: 'min', label: 'Min', type: 'number', value: 0, step: 'any' },
+        { id: 'max', label: 'Max', type: 'number', value: 1, step: 'any' }
+      ],
+      sample: (rng, p) => {
+        const min = Number(p.min), max = Number(p.max);
+        return min + rng.next() * (max - min);
+      },
+      validate: p => Number(p.max) >= Number(p.min)
+    },
+    normal: {
+      label: 'Normal (Gaussian)',
+      supportsUnique: false,
+      params: [
+        { id: 'mean', label: 'Mean', type: 'number', value: 0, step: 'any' },
+        { id: 'sd', label: 'Std dev', type: 'number', value: 1, step: 'any' }
+      ],
+      sample: (() => {
+        let spare = null;
+        return (rng, p) => {
+          const mean = Number(p.mean), sd = Math.max(1e-12, Number(p.sd));
+          if (spare !== null) { const z = spare; spare = null; return mean + sd * z; }
+          let u=0, v=0, s=0;
+          do { u = rng.next()*2-1; v = rng.next()*2-1; s = u*u+v*v; } while (s === 0 || s >= 1);
+          const mul = Math.sqrt(-2*Math.log(s)/s);
+          spare = v * mul;
+          return mean + sd * (u * mul);
+        };
+      })(),
+      validate: p => Number(p.sd) > 0
+    },
+    exponential: {
+      label: 'Exponential',
+      supportsUnique: false,
+      params: [
+        { id: 'lambda', label: 'Rate (λ)', type: 'number', value: 1, step: 'any' }
+      ],
+      sample: (rng, p) => {
+        const lambda = Math.max(1e-12, Number(p.lambda));
+        return -Math.log(1 - rng.next()) / lambda;
+      },
+      validate: p => Number(p.lambda) > 0
+    },
+    bernoulli: {
+      label: 'Bernoulli (0/1)',
+      supportsUnique: false,
+      params: [
+        { id: 'p', label: 'P(1)', type: 'number', value: 0.5, step: 'any' }
+      ],
+      sample: (rng, p) => rng.next() < Number(p.p) ? 1 : 0,
+      validate: p => Number(p.p) >= 0 && Number(p.p) <= 1
+    },
+    customWeighted: {
+      label: 'Custom weighted list',
+      supportsUnique: true,
+      params: [
+        { id: 'list', label: 'Values & weights (one per line: value,weight)', type: 'textarea',
+          value: 'apple,1\nbanana,2\ncherry,1' }
+      ],
+      sample: (rng, p, state) => {
+        const { items } = state; // [{value, weight}]
+        const total = state.weights.reduce((a,b)=>a+b,0);
+        let pick = rng.next() * total;
+        for (let i=0;i<items.length;i++){
+          pick -= items[i].weight;
+          if (pick <= 0) return { idx: i, value: items[i].value };
+        }
+        return { idx: items.length-1, value: items.at(-1).value };
+      },
+      validate: p => parseWeightedList(p.list).items.length > 0
+    }
+  };
+
+  // --- PRNG (LCG) ---
+  const createRng = seedInput => {
+    let seed = seedInput ? hashSeed(seedInput) : Math.floor(Math.random()*2**32)>>>0;
+    const next = () => {
+      seed = (1664525 * seed + 1013904223) >>> 0;
+      return seed / 2**32;
+    };
+    return { next, seed: () => seed };
+  };
+  const hashSeed = str => {
+    let h = 2166136261 >>> 0;
+    for (let i=0;i<str.length;i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  };
+
+  // --- DOM elements ---
+  const distributionSel = document.getElementById('distribution');
+  const paramFields = document.getElementById('param-fields');
+  const replacementCb = document.getElementById('replacement');
+  const replacementNote = document.getElementById('replacement-note');
+  const seedInput = document.getElementById('seed');
+  const countInput = document.getElementById('count');
+  const decimalsInput = document.getElementById('decimals');
+  const summaryEl = document.getElementById('summary');
+  const resultsEl = document.getElementById('results');
+  const canvas = document.getElementById('histogram');
+  const copyBtn = document.getElementById('copy');
+  const downloadBtn = document.getElementById('download');
+  const resetBtn = document.getElementById('reset');
+  const genBtn = document.getElementById('generate');
+
+  // Populate distribution dropdown
+  for (const key in distributions) {
+    const opt = document.createElement('option');
+    opt.value = key;
+    opt.textContent = distributions[key].label;
+    distributionSel.appendChild(opt);
+  }
+
+  const buildParamInputs = () => {
+    const type = distributionSel.value;
+    const { params, supportsUnique } = distributions[type];
+    paramFields.innerHTML = '';
+    params.forEach(p => {
+      const wrap = document.createElement('div');
+      const label = document.createElement('label');
+      label.textContent = p.label;
+      if (p.type === 'textarea') {
+        const ta = document.createElement('textarea');
+        ta.id = `param-${p.id}`;
+        ta.value = p.value ?? '';
+        label.appendChild(ta);
+      } else {
+        const input = document.createElement('input');
+        input.type = p.type;
+        input.step = p.step || 'any';
+        input.value = p.value ?? '';
+        input.id = `param-${p.id}`;
+        label.appendChild(input);
+      }
+      wrap.appendChild(label);
+      paramFields.appendChild(wrap);
+    });
+    replacementCb.disabled = !supportsUnique;
+    replacementCb.checked = true;
+    replacementNote.style.display = supportsUnique ? 'none' : 'block';
+  };
+
+  const parseParams = type => {
+    const params = {};
+    distributions[type].params.forEach(p => {
+      const el = document.getElementById(`param-${p.id}`);
+      params[p.id] = el.value;
+    });
+    return params;
+  };
+
+  const parseWeightedList = text => {
+    const items = [];
+    text.split(/\r?\n/).forEach(line => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+      const [valueRaw, weightRaw='1'] = trimmed.split(',').map(s => s.trim());
+      const weight = Number(weightRaw);
+      if (!Number.isFinite(weight) || weight <= 0) return;
+      const value = valueRaw;
+      items.push({ value, weight });
+    });
+    return { items };
+  };
+
+  const drawHistogram = (values, isNumeric) => {
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width = canvas.clientWidth;
+    const h = canvas.height = canvas.clientHeight;
+    ctx.clearRect(0,0,w,h);
+    if (!values.length) return;
+
+    if (!isNumeric) {
+      const freq = {};
+      values.forEach(v => freq[v] = (freq[v]||0)+1);
+      const entries = Object.entries(freq).slice(0,20);
+      const maxCount = Math.max(...entries.map(e=>e[1]));
+      const barWidth = w / entries.length;
+      entries.forEach(([label, count], i) => {
+        const barH = (count / maxCount) * (h - 30);
+        ctx.fillStyle = '#4b7bec';
+        ctx.fillRect(i*barWidth + 4, h - barH - 20, barWidth - 8, barH);
+        ctx.fillStyle = '#333';
+        ctx.textAlign = 'center';
+        ctx.font = '12px system-ui';
+        ctx.fillText(count, i*barWidth + barWidth/2, h - barH - 26);
+        ctx.fillText(label.slice(0,10), i*barWidth + barWidth/2, h - 6);
+      });
+      return;
+    }
+
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const bins = Math.min(25, Math.max(5, Math.round(Math.sqrt(values.length))));
+    const counts = Array(bins).fill(0);
+    const width = (max - min) || 1;
+    values.forEach(v => {
+      const idx = Math.min(bins - 1, Math.floor((v - min) / width * bins));
+      counts[idx]++;
+    });
+    const maxCount = Math.max(...counts);
+    const barWidth = w / bins;
+    ctx.fillStyle = '#4b7bec';
+    counts.forEach((c,i) => {
+      const barH = (c / maxCount) * (h - 30);
+      ctx.fillRect(i*barWidth + 4, h - barH - 20, barWidth - 8, barH);
+      ctx.fillStyle = '#333';
+      ctx.textAlign = 'center';
+      ctx.font = '12px system-ui';
+      ctx.fillText(c, i*barWidth + barWidth/2, h - barH - 26);
+      ctx.fillStyle = '#4b7bec';
+    });
+    ctx.fillStyle = '#333';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Min: ${min.toFixed(3)}  Max: ${max.toFixed(3)}`, 6, 14);
+  };
+
+  const summarize = vals => {
+    if (!vals.length) return 'No data.';
+    const numeric = vals.every(v => typeof v === 'number' && Number.isFinite(v));
+    if (!numeric) {
+      const freq = {};
+      vals.forEach(v => freq[v] = (freq[v]||0)+1);
+      const uniq = Object.keys(freq).length;
+      const top = Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,5);
+      const lines = [
+        `Count: ${vals.length}`,
+        `Unique: ${uniq}`,
+        `Top values: ${top.map(([k,c]) => `${k} (${c})`).join(', ')}`
+      ];
+      return lines.join('\n');
+    }
+    const sorted = [...vals].sort((a,b)=>a-b);
+    const n = vals.length;
+    const sum = vals.reduce((a,b)=>a+b,0);
+    const mean = sum / n;
+    const median = n%2 ? sorted[(n-1)/2] : (sorted[n/2-1]+sorted[n/2])/2;
+    const min = sorted[0], max = sorted[n-1];
+    const variance = vals.reduce((a,b)=>a + (b-mean)**2,0) / n;
+    const std = Math.sqrt(variance);
+    const uniq = new Set(vals.map(v=>String(v).trim())).size;
+    return [
+      `Count: ${n}`,
+      `Mean: ${mean}`,
+      `Median: ${median}`,
+      `Min: ${min}`,
+      `Max: ${max}`,
+      `Std dev: ${std}`,
+      `Unique values: ${uniq}`
+    ].join('\n');
+  };
+
+  const formatNumber = (v, decimals) => {
+    if (typeof v !== 'number' || !Number.isFinite(v)) return String(v);
+    return decimals !== null ? Number(v.toFixed(decimals)) : v;
+  };
+
+  const generate = () => {
+    const type = distributionSel.value;
+    const params = parseParams(type);
+    const dist = distributions[type];
+    if (!dist.validate(params)) {
+      alert('Please check your parameters for this distribution.');
+      return;
+    }
+    const count = Math.max(1, Math.min(10000, Number(countInput.value) || 1));
+    const decimals = Math.max(0, Math.min(12, Number(decimalsInput.value) || 0));
+    const rng = createRng(seedInput.value.trim());
+    const allowReplacement = replacementCb.checked;
+
+    let results = [];
+    let numericResults = [];
+
+    // Special handling for without-replacement cases
+    if (!allowReplacement && dist.supportsUnique) {
+      if (type === 'uniformInt') {
+        const min = Number(params.min), max = Number(params.max);
+        const size = max - min + 1;
+        if (count > size) {
+          alert(`Count exceeds the population size (${size}).`);
+          return;
+        }
+        const pool = Array.from({length: size}, (_,i)=>min+i);
+        // Fisher-Yates shuffle
+        for (let i = pool.length -1; i > 0; i--) {
+          const j = Math.floor(rng.next() * (i+1));
+          [pool[i], pool[j]] = [pool[j], pool[i]];
+        }
+        results = pool.slice(0, count);
+      } else if (type === 'customWeighted') {
+        const { items } = parseWeightedList(params.list);
+        if (count > items.length) {
+          alert(`Count exceeds the list size (${items.length}).`);
+          return;
+        }
+        const working = items.map(x => ({...x}));
+        for (let k=0;k<count;k++){
+          const total = working.reduce((a,b)=>a+b.weight,0);
+          let pick = rng.next() * total;
+          let idx = 0;
+          for (; idx < working.length; idx++) {
+            pick -= working[idx].weight;
+            if (pick <= 0) break;
+          }
+          const chosen = working[idx];
+          results.push(chosen.value);
+          working.splice(idx,1);
+        }
+      }
+    }
+
+    // With replacement or unsupported unique
+    if (!results.length && !(dist.supportsUnique && !allowReplacement)) {
+      let helperState = {};
+      if (type === 'customWeighted') {
+        helperState = parseWeightedList(params.list);
+        if (!helperState.items.length) {
+          alert('Please provide at least one valid "value,weight" line.');
+          return;
+        }
+        helperState.weights = helperState.items.map(x=>x.weight);
+      }
+      for (let i=0;i<count;i++) {
+        const val = dist.sample(rng, params, helperState);
+        if (type === 'customWeighted') {
+          results.push(val.value ?? val);
+        } else {
+          results.push(val);
+        }
+      }
+    }
+
+    const numeric = results.every(v => {
+      const n = Number(v);
+      return typeof v === 'number' ? Number.isFinite(v) : (!Number.isNaN(n) && Number.isFinite(n));
+    });
+
+    if (numeric) {
+      numericResults = results.map(v => formatNumber(Number(v), decimals));
+      results = numericResults;
+    } else {
+      results = results.map(v => typeof v === 'string' ? v : String(v));
+    }
+
+    summaryEl.textContent = summarize(results);
+    resultsEl.textContent = results.join('\n');
+    drawHistogram(numeric ? results.map(Number) : results, numeric);
+  };
+
+  const copy = () => {
+    const text = resultsEl.textContent;
+    if (!text.trim()) return;
+    navigator.clipboard?.writeText(text).then(()=> {
+      copyBtn.textContent = 'Copied!';
+      setTimeout(()=> copyBtn.textContent='Copy', 800);
+    });
+  };
+
+  const download = () => {
+    const text = resultsEl.textContent;
+    if (!text.trim()) return;
+    const blob = new Blob([text.replace(/\n/g, '\r\n')], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'random-values.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const reset = () => {
+    seedInput.value = '';
+    countInput.value = 50;
+    decimalsInput.value = 4;
+    buildParamInputs();
+    summaryEl.textContent = 'Run a generation to see summary stats.';
+    resultsEl.textContent = 'No values yet.';
+    drawHistogram([], true);
+  };
+
+  // Event listeners
+  distributionSel.addEventListener('change', buildParamInputs);
+  genBtn.addEventListener('click', generate);
+  copyBtn.addEventListener('click', copy);
+  downloadBtn.addEventListener('click', download);
+  resetBtn.addEventListener('click', reset);
+
+  // Initialize
+  buildParamInputs();
+  drawHistogram([], true);
+})();
+</script>
+</body>
+</html>
