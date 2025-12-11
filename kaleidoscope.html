@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Kaleidoscope</title>
+    <style>
+        :root {
+            --bg-color: #0f0f12;
+            --panel-bg: rgba(20, 20, 25, 0.85);
+            --text-color: #e0e0e0;
+            --accent-color: #00bcd4;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: var(--bg-color);
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            color: var(--text-color);
+        }
+
+        canvas {
+            display: block;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        /* Controls Panel */
+        #controls {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            width: 280px;
+            padding: 20px;
+            background: var(--panel-bg);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: opacity 0.3s;
+            z-index: 10;
+        }
+
+        #controls.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        h1 {
+            font-size: 1.2rem;
+            margin: 0 0 15px 0;
+            color: var(--accent-color);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            text-align: center;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+            margin-bottom: 5px;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: #444;
+            border-radius: 3px;
+            outline: none;
+            -webkit-appearance: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: var(--accent-color);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        /* Button Styling */
+        .btn-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 10px;
+            border: none;
+            border-radius: 6px;
+            background: #333;
+            color: white;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #444;
+        }
+
+        button#btn-save {
+            background: var(--accent-color);
+            color: #000;
+        }
+
+        button#btn-save:hover {
+            background: #00acc1;
+        }
+
+        /* Toggle UI Hint */
+        #ui-toggle-hint {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            font-size: 0.8rem;
+            opacity: 0.5;
+            pointer-events: none;
+            z-index: 5;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="kaleidoscope"></canvas>
+    
+    <div id="ui-toggle-hint">Press 'H' to toggle UI</div>
+
+    <div id="controls">
+        <h1>Kaleidoscope</h1>
+        
+        <div class="control-group">
+            <label>Segments <span id="val-segments">12</span></label>
+            <input type="range" id="inp-segments" min="4" max="32" step="2" value="12">
+        </div>
+
+        <div class="control-group">
+            <label>Rotation Speed <span id="val-speed">0.5</span></label>
+            <input type="range" id="inp-speed" min="0" max="2" step="0.1" value="0.2">
+        </div>
+
+        <div class="control-group">
+            <label>Source Zoom <span id="val-zoom">1.0</span></label>
+            <input type="range" id="inp-zoom" min="0.5" max="3" step="0.1" value="1.0">
+        </div>
+
+        <div class="control-group">
+            <label>Particle Count <span id="val-particles">50</span></label>
+            <input type="range" id="inp-particles" min="10" max="150" step="5" value="50">
+        </div>
+
+        <div class="btn-row">
+            <button id="btn-reset">Reset</button>
+            <button id="btn-save">Save Image</button>
+        </div>
+        
+        <p style="font-size: 0.75rem; color: #888; margin-top: 15px; text-align: center;">
+            Move mouse to shift pattern
+        </p>
+    </div>
+
+    <script>
+        /**
+         * Logic Breakdown:
+         * 1. SourceGenerator: Creates a hidden canvas with moving colorful blobs/shapes.
+         * 2. Kaleidoscope: Takes the source canvas, slices it, creates mirrors, and renders to main screen.
+         * 3. App: Manages events, resizing, and the animation loop.
+         */
+
+        // --- Configuration & State ---
+        const state = {
+            segments: 12,
+            speed: 0.2, // Rotation speed of the source pattern
+            zoom: 1.0,
+            particleCount: 50,
+            rotationAngle: 0,
+            mouseX: 0,
+            mouseY: 0,
+            uiVisible: true
+        };
+
+        // --- Source Image Generator ---
+        // This creates the "stuff" inside the kaleidoscope (off-screen canvas)
+        class SourceGenerator {
+            constructor(width, height) {
+                this.canvas = document.createElement('canvas');
+                this.ctx = this.canvas.getContext('2d');
+                this.resize(width, height);
+                this.particles = [];
+                this.initParticles();
+            }
+
+            resize(w, h) {
+                this.canvas.width = w;
+                this.canvas.height = h;
+                this.width = w;
+                this.height = h;
+            }
+
+            initParticles() {
+                this.particles = [];
+                for(let i=0; i<state.particleCount; i++) {
+                    this.particles.push(this.createParticle());
+                }
+            }
+
+            createParticle() {
+                const hue = Math.random() * 360;
+                return {
+                    x: Math.random() * this.width,
+                    y: Math.random() * this.height,
+                    vx: (Math.random() - 0.5) * 2,
+                    vy: (Math.random() - 0.5) * 2,
+                    radius: Math.random() * 40 + 10,
+                    color: `hsla(${hue}, 70%, 60%, ${Math.random() * 0.5 + 0.2})`,
+                    type: Math.random() > 0.8 ? 'rect' : 'arc' // Mix shapes
+                };
+            }
+
+            update() {
+                // Re-init if count changed significantly
+                if(Math.abs(this.particles.length - state.particleCount) > 5) {
+                    this.initParticles();
+                }
+
+                // Clear with a slight fade for trails (optional, but keep clean for now)
+                this.ctx.fillStyle = '#000';
+                this.ctx.fillRect(0, 0, this.width, this.height);
+
+                // Draw gradient background
+                const grad = this.ctx.createLinearGradient(0,0, this.width, this.height);
+                grad.addColorStop(0, '#1a0b2e');
+                grad.addColorStop(1, '#000000');
+                this.ctx.fillStyle = grad;
+                this.ctx.fillRect(0,0, this.width, this.height);
+
+                // Update and Draw Particles
+                this.particles.forEach(p => {
+                    p.x += p.vx;
+                    p.y += p.vy;
+
+                    // Bounce off walls
+                    if (p.x < -p.radius) p.x = this.width + p.radius;
+                    if (p.x > this.width + p.radius) p.x = -p.radius;
+                    if (p.y < -p.radius) p.y = this.height + p.radius;
+                    if (p.y > this.height + p.radius) p.y = -p.radius;
+
+                    this.ctx.beginPath();
+                    this.ctx.fillStyle = p.color;
+                    
+                    if(p.type === 'arc') {
+                        this.ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+                    } else {
+                        this.ctx.rect(p.x - p.radius, p.y - p.radius, p.radius*2, p.radius*2);
+                    }
+                    this.ctx.fill();
+                    
+                    // Add some strokes for detail
+                    this.ctx.strokeStyle = "rgba(255,255,255,0.1)";
+                    this.ctx.stroke();
+                });
+
+                // Add some connecting lines for geometric complexity
+                this.ctx.beginPath();
+                this.ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
+                for(let i=0; i<this.particles.length; i+=5) {
+                    const p1 = this.particles[i];
+                    const p2 = this.particles[(i+1) % this.particles.length];
+                    this.ctx.moveTo(p1.x, p1.y);
+                    this.ctx.lineTo(p2.x, p2.y);
+                }
+                this.ctx.stroke();
+            }
+        }
+
+        // --- Main Application ---
+        const canvas = document.getElementById('kaleidoscope');
+        const ctx = canvas.getContext('2d');
+        
+        // Source canvas dimensions (doesn't need to match screen, but higher is sharper)
+        const sourceGen = new SourceGenerator(800, 800);
+
+        // Resize handler
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            state.mouseX = canvas.width / 2;
+            state.mouseY = canvas.height / 2;
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        // Mouse interaction
+        window.addEventListener('mousemove', (e) => {
+            state.mouseX = e.clientX;
+            state.mouseY = e.clientY;
+        });
+
+        // Keyboard interaction
+        window.addEventListener('keydown', (e) => {
+            if(e.key.toLowerCase() === 'h') {
+                state.uiVisible = !state.uiVisible;
+                document.getElementById('controls').classList.toggle('hidden', !state.uiVisible);
+            }
+        });
+
+        // --- The Rendering Loop ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            // 1. Update source animation
+            sourceGen.update();
+            
+            // 2. Clear main canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 3. Setup Kaleidoscope parameters
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            const segments = parseInt(state.segments);
+            const angleStep = (Math.PI * 2) / segments;
+            
+            // Update rotation based on speed
+            state.rotationAngle += state.speed * 0.01;
+
+            // 4. Draw Segments
+            // We use the "clipping wedge" technique for clean segments
+            
+            // To make the pattern "scroll" based on mouse, we calculate an offset
+            // We map mouse coordinates relative to center to source coordinates
+            const mx = (state.mouseX - cx) * 2;
+            const my = (state.mouseY - cy) * 2;
+
+            // Radius ensures we cover the corners of the screen
+            const radius = Math.sqrt(cx*cx + cy*cy) + 10;
+
+            for (let i = 0; i < segments; i++) {
+                ctx.save();
+                
+                // Move to center
+                ctx.translate(cx, cy);
+                
+                // Rotate to the segment's position
+                ctx.rotate(i * angleStep);
+                
+                // Mirroring effect: Scale odd segments
+                if (i % 2 !== 0) {
+                    ctx.scale(1, -1);
+                }
+
+                // Create the wedge path
+                ctx.beginPath();
+                ctx.moveTo(0, 0);
+                // Draw an arc segment slightly larger than needed to avoid subpixel gaps
+                ctx.arc(0, 0, radius, -0.5 * angleStep - 0.01, 0.5 * angleStep + 0.01); 
+                ctx.lineTo(0,0);
+                ctx.closePath();
+                
+                // Clip the context to this wedge
+                ctx.clip();
+
+                // Transform for the source image
+                // We rotate the source image itself over time
+                ctx.rotate(state.rotationAngle);
+                
+                // Apply Zoom
+                ctx.scale(state.zoom, state.zoom);
+
+                // Draw the source image
+                // We center the source image draw at the "mouse offset"
+                const srcSize = 800; // sourceGen width
+                ctx.drawImage(
+                    sourceGen.canvas, 
+                    -srcSize/2 + mx, 
+                    -srcSize/2 + my
+                );
+
+                ctx.restore();
+            }
+        }
+
+        // --- UI Logic ---
+        function setupUI() {
+            const inputs = [
+                { id: 'inp-segments', key: 'segments', disp: 'val-segments' },
+                { id: 'inp-speed', key: 'speed', disp: 'val-speed' },
+                { id: 'inp-zoom', key: 'zoom', disp: 'val-zoom' },
+                { id: 'inp-particles', key: 'particleCount', disp: 'val-particles' }
+            ];
+
+            inputs.forEach(item => {
+                const el = document.getElementById(item.id);
+                const disp = document.getElementById(item.disp);
+                
+                el.addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    state[item.key] = val;
+                    disp.textContent = val;
+                    
+                    // Special case for particles (re-init handled in update loop)
+                });
+            });
+
+            document.getElementById('btn-reset').addEventListener('click', () => {
+                state.segments = 12;
+                state.speed = 0.2;
+                state.zoom = 1.0;
+                state.particleCount = 50;
+                
+                // Update Inputs
+                document.getElementById('inp-segments').value = 12;
+                document.getElementById('inp-speed').value = 0.2;
+                document.getElementById('inp-zoom').value = 1.0;
+                document.getElementById('inp-particles').value = 50;
+                
+                // Update Labels
+                document.getElementById('val-segments').textContent = 12;
+                document.getElementById('val-speed').textContent = 0.2;
+                document.getElementById('val-zoom').textContent = 1.0;
+                document.getElementById('val-particles').textContent = 50;
+                
+                sourceGen.initParticles();
+            });
+
+            document.getElementById('btn-save').addEventListener('click', () => {
+                const link = document.createElement('a');
+                link.download = `kaleidoscope-${Date.now()}.png`;
+                link.href = canvas.toDataURL();
+                link.click();
+            });
+        }
+
+        // Start
+        setupUI();
+        animate();
+
+    </script>
+</body>
+</html>
